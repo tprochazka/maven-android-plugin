@@ -174,6 +174,7 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
      * The <code>AndroidManifest.xml</code> file.
      *
      * @parameter default-value="${project.basedir}/AndroidManifest.xml"
+     * @parameter alias="androidManifestFileAlias"
      */
     protected File androidManifestFile;
 
