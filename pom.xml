@@ -26,7 +26,7 @@
     </parent>
     <groupId>com.jayway.maven.plugins.android.generation2</groupId>
     <artifactId>android-maven-plugin</artifactId>
-    <version>3.5.2-SNAPSHOT</version>
+    <version>3.5.2</version>
     <packaging>maven-plugin</packaging>
     <name>Android Maven Plugin - android-maven-plugin</name>
     <description>Maven Plugin for Android Development</description>
@@ -58,7 +58,7 @@
         <url>http://github.com/jayway/maven-android-plugin/tree/${scm.branch}</url>
         <connection>scm:git:git://github.com/jayway/maven-android-plugin.git</connection>
         <developerConnection>scm:git:ssh://git@github.com/jayway/maven-android-plugin.git</developerConnection>
-      <tag>HEAD</tag>
+      <tag>3.5.2</tag>
   </scm>
     <issueManagement>
         <system>Google Code Issue Tracking</system>
@@ -250,6 +250,11 @@
         <dependency>
             <groupId>com.github.rtyley</groupId>
             <artifactId>android-screenshot-paparazzo</artifactId>
+            <version>1.8</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.rtyley</groupId>
+            <artifactId>android-screenshot-celebrity</artifactId>
             <version>1.8</version>
         </dependency>
     </dependencies>
