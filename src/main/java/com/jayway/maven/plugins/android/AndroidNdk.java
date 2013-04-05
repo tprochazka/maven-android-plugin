@@ -18,11 +18,9 @@ import org.apache.commons.lang.SystemUtils;
 import org.apache.maven.plugin.MojoExecutionException;
 
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Scanner;
 
 /**
  * Represents an Android NDK.
@@ -85,21 +83,24 @@ public class AndroidNdk
 
     private File findStripper( String toolchain )
     {
-        String os = "";
+        List<String> osDirectories = new ArrayList<String>();
         String extension = "";
 
         if ( SystemUtils.IS_OS_LINUX )
         {
-            os = "linux-x86";
+            osDirectories.add( "linux-x86" );
+            osDirectories.add( "linux-x86_64" );
         }
         else if ( SystemUtils.IS_OS_WINDOWS )
         {
-            os = "windows";
+            osDirectories.add( "windows" );
+            osDirectories.add( "windows-x86_64" );
             extension = ".exe";
         }
         else if ( SystemUtils.IS_OS_MAC || SystemUtils.IS_OS_MAC_OSX )
         {
-            os = "darwin-x86";
+            osDirectories.add( "darwin-x86" );
+            osDirectories.add( "darwin-x86_64" );
         }
 
         String fileName = "";
@@ -116,45 +117,14 @@ public class AndroidNdk
             fileName = "mipsel-linux-android-strip" + extension;
         }
 
-        String stripperLocation = String.format( "toolchains/%s/prebuilt/%s/bin/%s", toolchain, os, fileName );
-        final File stripper = new File( ndkPath, stripperLocation );
-        if ( stripper.exists() )
+        for ( String osDirectory : osDirectories )
         {
-            return stripper;
-        }
-        else
-        {
-            return null;
-        }
-    }
-
-    public String[] getAppAbi( File applicationMakefile )
-    {
-        Scanner scanner = null;
-        try
-        {
-            if ( applicationMakefile != null && applicationMakefile.exists() )
+            String stripperLocation =
+                String.format( "toolchains/%s/prebuilt/%s/bin/%s", toolchain, osDirectory, fileName );
+            final File stripper = new File( ndkPath, stripperLocation );
+            if ( stripper.exists() )
             {
-                scanner = new Scanner( applicationMakefile );
-                while ( scanner.hasNextLine( ) )
-                {
-                    String line = scanner.nextLine().trim();
-                    if ( line.startsWith( "APP_ABI" ) )
-                    {
-                        return line.substring( line.indexOf( ":=" ) + 2 ).trim().split( " " );
-                    }
-                }
-            }
-        }
-        catch ( FileNotFoundException e )
-        {
-            // do nothing
-        }
-        finally
-        {
-            if ( scanner != null )
-            {
-                scanner.close();
+                return stripper;
             }
         }
         return null;
@@ -280,43 +250,5 @@ public class AndroidNdk
         //  if we got here, throw an error
         throw new MojoExecutionException( "gdbserver binary for architecture " + ndkArchitecture
             + " does not exist, please double check the toolchain and OS used" );
-    }
-
-    public String[] getNdkArchitectures( final String ndkClassifier, final String ndkArchitecture,
-                                         final String applicationMakefile, final File basedir )
-        throws MojoExecutionException
-    {
-        // if there is a classifier, return it
-        if ( ndkClassifier != null )
-        {
-            return new String[] { ndkClassifier };
-        }
-
-        // if there is a specified ndk architecture, return it
-        if ( ndkArchitecture != null )
-        {
-            return new String[] { ndkArchitecture };
-        }
-
-        // if there is no application makefile specified, let's use the default one
-        String applicationMakefileToUse = applicationMakefile;
-        if ( applicationMakefileToUse == null )
-        {
-            applicationMakefileToUse = "jni/Application.mk";
-        }
-
-        // now let's see if the application file exists
-        File appMK = new File( basedir, applicationMakefileToUse );
-        if ( appMK.exists() )
-        {
-            String[] foundNdkArchitectures = getAppAbi( appMK );
-            if ( foundNdkArchitectures != null )
-            {
-                return foundNdkArchitectures;
-            }
-        }
-
-        // return a default ndk architecture
-        return new String[] { "armeabi" };
     }
 }
