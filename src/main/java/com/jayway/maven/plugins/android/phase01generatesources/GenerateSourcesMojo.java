@@ -16,11 +16,13 @@
  */
 package com.jayway.maven.plugins.android.phase01generatesources;
 
+import com.android.manifmerger.ManifestMerger;
+import com.android.manifmerger.MergerLog;
+import com.android.utils.StdLogger;
 import com.jayway.maven.plugins.android.AbstractAndroidMojo;
 import com.jayway.maven.plugins.android.CommandExecutor;
 import com.jayway.maven.plugins.android.ExecutionException;
 import com.jayway.maven.plugins.android.common.AetherHelper;
-import com.jayway.maven.plugins.android.manifmerger.ManifestMerger;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang.StringUtils;
@@ -185,7 +187,7 @@ public class GenerateSourcesMojo extends AbstractAndroidMojo
                 {
                     apklibAidlFiles = findRelativeAidlFileNames(
                             new File( getLibraryUnpackDirectory( artifact ) + "/src" ) );
-                    relativeApklibAidlFileNames.put( artifact.getArtifactId(), apklibAidlFiles );
+                    relativeApklibAidlFileNames.put( artifact.getId(), apklibAidlFiles );
                 }
             }
 
@@ -206,7 +208,7 @@ public class GenerateSourcesMojo extends AbstractAndroidMojo
                 if ( artifact.getType().equals( APKLIB ) )
                 {
                     files.put( new File( getLibraryUnpackDirectory( artifact ) + "/src" ),
-                            relativeApklibAidlFileNames.get( artifact.getArtifactId() ) );
+                            relativeApklibAidlFileNames.get( artifact.getId() ) );
                 }
             }
             generateAidlFiles( files );
@@ -427,6 +429,10 @@ public class GenerateSourcesMojo extends AbstractAndroidMojo
 
         List<String> commands = new ArrayList<String>();
         commands.add( "package" );
+        if ( APKLIB.equals( project.getArtifact().getType() ) )
+        {
+            commands.add( "--non-constant-id" );
+        }
         commands.add( "-m" );
         commands.add( "-J" );
         commands.add( genDirectory.getAbsolutePath() );
@@ -468,10 +474,10 @@ public class GenerateSourcesMojo extends AbstractAndroidMojo
             commands.add( "-G" );
             commands.add( proguardFile.getAbsolutePath() );
         }
-        getLog().info( getAndroidSdk().getPathForTool( "aapt" ) + " " + commands.toString() );
+        getLog().info( getAndroidSdk().getAaptPath() + " " + commands.toString() );
         try
         {
-            executor.executeCommand( getAndroidSdk().getPathForTool( "aapt" ), commands, project.getBasedir(), false );
+            executor.executeCommand( getAndroidSdk().getAaptPath(), commands, project.getBasedir(), false );
         }
         catch ( ExecutionException e )
         {
@@ -547,14 +553,16 @@ public class GenerateSourcesMojo extends AbstractAndroidMojo
 
         if ( !libManifests.isEmpty() )
         {
-            File mergedManifest = new File( androidManifestFile.getParent(), "AndroidManifest-merged.xml" );
-
-            ManifestMerger mm = new ManifestMerger( getLog(), getAndroidSdk().getSdkPath(), getAndroidSdk()
-                    .getSdkMajorVersion() );
+            final File mergedManifest = new File( androidManifestFile.getParent(), "AndroidManifest-merged.xml" );
+            final StdLogger stdLogger = new StdLogger( StdLogger.Level.VERBOSE );
+            final ManifestMerger merger = new ManifestMerger( MergerLog.wrapSdkLog( stdLogger ), null );
 
             getLog().info( "Merging manifests of dependent apklibs" );
-            if ( mm.process( mergedManifest, androidManifestFile, 
-                    libManifests.toArray( new File[libManifests.size()] ) ) )
+
+            final boolean mergeSuccess = merger.process( mergedManifest, androidManifestFile,
+                libManifests.toArray( new File[libManifests.size()] ),  null, null );
+
+            if ( mergeSuccess )
             {
                 // Replace the original manifest file with the merged one so that
                 // the rest of the build will pick it up.
@@ -651,10 +659,10 @@ public class GenerateSourcesMojo extends AbstractAndroidMojo
             commands.add( "-c" );
             commands.add( configurations );
         }
-        getLog().info( getAndroidSdk().getPathForTool( "aapt" ) + " " + commands.toString() );
+        getLog().info( getAndroidSdk().getAaptPath() + " " + commands.toString() );
         try
         {
-            executor.executeCommand( getAndroidSdk().getPathForTool( "aapt" ), commands, project.getBasedir(), false );
+            executor.executeCommand( getAndroidSdk().getAaptPath(), commands, project.getBasedir(), false );
         }
         catch ( ExecutionException e )
         {
@@ -749,7 +757,7 @@ public class GenerateSourcesMojo extends AbstractAndroidMojo
                     CommandExecutor executor = CommandExecutor.Factory.createDefaultCommmandExecutor();
                     executor.setLogger( this.getLog() );
 
-                    executor.executeCommand( getAndroidSdk().getPathForTool( "aidl" ), commands, project.getBasedir(),
+                    executor.executeCommand( getAndroidSdk().getAidlPath(), commands, project.getBasedir(),
                             false );
                 }
                 catch ( ExecutionException e )

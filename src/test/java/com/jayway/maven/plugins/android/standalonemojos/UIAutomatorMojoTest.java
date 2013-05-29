@@ -87,6 +87,9 @@ public class UIAutomatorMojoTest extends AbstractAndroidMojoTestCase< UIAutomato
         String[] automatorTestClassOrMethods = Whitebox.getInternalState( mojo, "parsedTestClassOrMethods" );
         Boolean automatorTakeScreenshotOnFailure = Whitebox.getInternalState( mojo, "parsedTakeScreenshotOnFailure" );
         String automatorScreenshotsPathOnDevice = Whitebox.getInternalState( mojo, "parsedScreenshotsPathOnDevice" );
+		Boolean automatorCreateReport = Whitebox.getInternalState( mojo, "parsedCreateReport" );
+		String automatorReportSuffix = Whitebox.getInternalState( mojo, "parsedReportSuffix" );
+		String automatorPropertiesKeyPrefix = Whitebox.getInternalState( mojo, "parsedPropertiesKeyPrefix" );
 
         assertFalse( "UIAutomator skip parameter should be false", automatorSkip );
         assertFalse( "UIAutomator debug parameter should be false", automatorDebug );
@@ -99,6 +102,9 @@ public class UIAutomatorMojoTest extends AbstractAndroidMojoTestCase< UIAutomato
                 automatorTakeScreenshotOnFailure );
         assertEquals( "UIAutomator screenshotsPath on device be equal /sdcard/uiautomator-screenshots/",
                 "/sdcard/uiautomator-screenshots/", automatorScreenshotsPathOnDevice );
+		assertFalse( "UIAutomator createReport parameter should be false", automatorCreateReport );
+		assertNull( "UIAutomator reportSuffix parameter should be null", automatorReportSuffix );
+		assertNull( "UIAutomator propertiesKeyPrefix parameter should be null", automatorPropertiesKeyPrefix );
     }
 
     /**
@@ -135,6 +141,9 @@ public class UIAutomatorMojoTest extends AbstractAndroidMojoTestCase< UIAutomato
         String[] automatorTestClassOrMethods = Whitebox.getInternalState( mojo, "parsedTestClassOrMethods" );
         Boolean automatorTakeScreenshotOnFailure = Whitebox.getInternalState( mojo, "parsedTakeScreenshotOnFailure" );
         String automatorScreenshotsPathOnDevice = Whitebox.getInternalState( mojo, "parsedScreenshotsPathOnDevice" );
+		Boolean automatorCreateReport = Whitebox.getInternalState( mojo, "parsedCreateReport" );
+		String automatorReportSuffix = Whitebox.getInternalState( mojo, "parsedReportSuffix" );
+		String automatorPropertiesKeyPrefix = Whitebox.getInternalState( mojo, "parsedPropertiesKeyPrefix" );
 
         assertFalse( "UIAutomator skip parameter should be false", automatorSkip );
         assertFalse( "UIAutomator debug parameter should be false", automatorDebug );
@@ -152,6 +161,13 @@ public class UIAutomatorMojoTest extends AbstractAndroidMojoTestCase< UIAutomato
                 automatorTakeScreenshotOnFailure );
         assertEquals( "UIAutomator screenshotsPath on device be equal /mnt/sdcard/screenshots/",
                 "/mnt/sdcard/screenshots/", automatorScreenshotsPathOnDevice );
+		assertTrue( "UIAutomator createReport parameter should be true", automatorCreateReport );
+		String expectedReportSuffix = "-mySpecialReport";
+		assertEquals( "UIAutomator reportSuffix parameter should be equal to "+expectedReportSuffix,
+				expectedReportSuffix, automatorReportSuffix );
+		String expectedPropertiesKeyPrefix = "UIA";
+		assertEquals( "UIAutomator propertiesKeyPrefix should be equal to " + expectedPropertiesKeyPrefix,
+				expectedPropertiesKeyPrefix, automatorPropertiesKeyPrefix);
     }
 
 }

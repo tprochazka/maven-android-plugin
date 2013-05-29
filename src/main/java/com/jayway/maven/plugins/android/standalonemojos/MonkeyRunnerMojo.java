@@ -23,9 +23,13 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -45,6 +49,8 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.project.MavenProject;
+import org.codehaus.plexus.interpolation.os.Os;
+import org.codehaus.plexus.util.cli.shell.BourneShell;
 import org.w3c.dom.Attr;
 import org.w3c.dom.Document;
 import org.w3c.dom.NamedNodeMap;
@@ -56,41 +62,34 @@ import com.android.ddmlib.IShellOutputReceiver;
 import com.android.ddmlib.ShellCommandUnresponsiveException;
 import com.android.ddmlib.TimeoutException;
 import com.android.ddmlib.testrunner.ITestRunListener;
+import com.android.ddmlib.testrunner.ITestRunListener.TestFailure;
 import com.android.ddmlib.testrunner.TestIdentifier;
-import com.android.ddmlib.testrunner.UIAutomatorRemoteAndroidTestRunner;
 import com.jayway.maven.plugins.android.AbstractAndroidMojo;
+import com.jayway.maven.plugins.android.CommandExecutor;
 import com.jayway.maven.plugins.android.DeviceCallback;
-import com.jayway.maven.plugins.android.ScreenshotServiceWrapper;
+import com.jayway.maven.plugins.android.ExecutionException;
 import com.jayway.maven.plugins.android.common.DeviceHelper;
 import com.jayway.maven.plugins.android.config.ConfigHandler;
 import com.jayway.maven.plugins.android.config.ConfigPojo;
 import com.jayway.maven.plugins.android.config.PullParameter;
-import com.jayway.maven.plugins.android.configuration.UIAutomator;
+import com.jayway.maven.plugins.android.configuration.MonkeyRunner;
+import com.jayway.maven.plugins.android.configuration.Program;
 
 /**
- * Can execute tests using ui uiautomator.<br/>
- * Implements parsing parameters from pom or command line arguments and sets useful defaults as well. This goal is meant
- * to execute a special <i>java project</i> dedicated to UI testing via UIAutomator. It will build the jar of the
- * project, dex it and send it to dalvik cache of a rooted device or to an emulator. If you use a rooted device, refer
- * to <a href="http://stackoverflow.com/a/13805869/693752">this thread on stack over flow</a>. <br />
- * <br />
- * The tests are executed via ui automator. A surefire compatible test report can be generated and its location will be
- * logged during build. <br />
- * <br />
- * To use this goal, you will need to place the uiautomator.jar file (part of the Android SDK >= 16) on a nexus
- * repository. <br />
- * <br />
+ * Can execute monkey runner programs.<br/>
+ * Implements parsing parameters from pom or command line arguments and sets useful defaults as well. This goal will
+ * invoke monkey runner scripts. If the application crashes during the exercise, this goal can fail the build. <br />
  * A typical usage of this goal can be found at <a
  * href="https://github.com/stephanenicolas/Quality-Tools-for-Android">Quality tools for Android project</a>.
  * 
- * @see <a href="http://developer.android.com/tools/testing/testing_ui.html">Android UI testing doc</a>
- * @see <a href="http://developer.android.com/tools/help/uiautomator/index.html">UI Automator manual page</a>
+ * @see <a href="http://developer.android.com/tools/help/monkey.html">Monkey docs by Google</a>
+ * @see <a href="http://stackoverflow.com/q/3968064/693752">Stack Over Flow thread for parsing monkey output.</a>
  * @author Stéphane Nicolas <snicolas@octo.com>
- * @goal uiautomator
- * @requiresProject false
+ * @goal monkeyrunner
+ * @requiresProject true
  */
 @SuppressWarnings( "unused" )
-public class UIAutomatorMojo extends AbstractAndroidMojo
+public class MonkeyRunnerMojo extends AbstractAndroidMojo
 {
     /**
      * -Dmaven.test.skip is commonly used with Maven to skip tests. We honor it.
@@ -109,7 +108,7 @@ public class UIAutomatorMojo extends AbstractAndroidMojo
     private boolean mavenSkipTests;
     /**
      * -Dmaven.test.failure.ignore is commonly used with Maven to prevent failure of build when (some) tests fail. We
-     * honor it too. Builds will still fail if tests can't complete or throw an exception.
+     * honor it too.
      * 
      * @parameter expression="${maven.test.failure.ignore}" default-value=false
      * @readonly
@@ -118,7 +117,7 @@ public class UIAutomatorMojo extends AbstractAndroidMojo
 
     /**
      * -Dmaven.test.failure.ignore is commonly used with Maven to prevent failure of build when (some) tests fail. We
-     * honor it too. Builds will still fail if tests can't complete or throw an exception.
+     * honor it too.
      * 
      * @parameter expression="${testFailureIgnore}" default-value=false
      * @readonly
@@ -126,32 +125,22 @@ public class UIAutomatorMojo extends AbstractAndroidMojo
     private boolean mavenIgnoreTestFailure;
 
     /**
-     * The configuration for the ui automator goal. As soon as a lint goal is invoked the command will be executed
-     * unless the skip parameter is set. A minimal configuration that will run lint and produce a XML report in
-     * ${project.build.directory}/lint/lint-results.xml is
+     * The configuration for the monkey runner goal.
      * 
      * <pre>
-     * &lt;uiautomator&gt;
+     * &lt;monkeyrunner&gt;
      *   &lt;skip&gt;false&lt;/skip&gt;
-     * &lt;/uiautomator&gt;
+     * &lt;/monkeyrunner&gt;
      * </pre>
      * 
      * Full configuration can use these parameters.
      * 
      * <pre>
-     * &lt;uiautomator&gt;
-     *   &lt;skip&gt;false&lt;/skip&gt;
-     *   &lt;testClassOrMethods&gt;
-     *     &lt;testClassOrMethod&gt;com.foo.SampleTest&lt;/testClassOrMethod&gt;
-     *     &lt;testClassOrMethod&gt;com.bar.CalculatorTest#testCalculatorApp&lt;/testClassOrMethod&gt;
-     *   &lt;/testClassOrMethods&gt;
-     *   &lt;createReport&gt;true&lt;/createReport&gt;
-     *   &lt;takeScreenshotOnFailure&gt;true&lt;/takeScreenshotOnFailure&gt;
-     *   &lt;screenshotsPathOnDevice&gt;/sdcard/uiautomator-screenshots/&lt;/screenshotsPathOnDevice&gt;
-     *   &lt;propertiesKeyPrefix&gt;UIA&lt;/propertiesKeyPrefix&gt;
-     * &lt;/uiautomator&gt;
+     *  &lt;monkeyrunner&gt;
+     *    &lt;skip&gt;false&lt;/skip&gt;
+     *    &lt;createReport&gt;true&lt;/createReport&gt;
+     *  &lt;/monkeyrunner&gt;
      * </pre>
-     * 
      * 
      * Alternatively to the plugin configuration values can also be configured as properties on the command line as
      * android.lint.* or in pom or settings file as properties like lint*.
@@ -159,90 +148,53 @@ public class UIAutomatorMojo extends AbstractAndroidMojo
      * @parameter
      */
     @ConfigPojo
-    private UIAutomator uiautomator;
+    private MonkeyRunner monkeyrunner;
 
     /**
-     * Enables or disables uiautomator test goal. If <code>true</code> it will be skipped; if <code>false</code>, it
-     * will be run.
+     * Enables or disables monkey runner test goal. If <code>true</code> it will be skipped; if <code>false</code>, it
+     * will be run. Defaults to true.
      * 
-     * @parameter expression="${android.uiautomator.skip}"
+     * @parameter expression="${android.monkeyrunner.skip}"
      */
-    private Boolean uiautomatorSkip;
+    private Boolean monkeyRunnerSkip;
 
     @PullParameter( defaultValue = "true" )
     private Boolean parsedSkip;
 
     /**
-     * Jar file that will be run during ui uiautomator tests.
+     * (Optional) Specifies a .jar file containing a plugin for monkeyrunner. To learn more about monkeyrunner plugins,
+     * see <a href="http://developer.android.com/tools/help/monkeyrunner_concepts.html#Plugins">Extending monkeyrunner
+     * with plugins</a>. You can add as many plugins as you want.
      * 
-     * @parameter expression="${android.uiautomator.jarFile}"
+     * Defaults to no plugins.
+     * 
+     * @parameter expression="${android.monkeyrunner.plugins}"
      */
-    private String uiautomatorJarFile;
+    private String[] monkeyPlugins;
 
-    @PullParameter( defaultValueGetterMethod = "getJarFile" )
-    private String parsedJarFile;
+    @PullParameter( defaultValueGetterMethod = "getPlugins" )
+    private String[] parsedPlugins;
 
     /**
-     * Test class or methods to execute during uiautomator tests. Each class or method must be fully qualified with the
-     * package name, in one of these formats:
-     * <ul>
-     * <li>package_name.class_name
-     * <li>package_name.class_name#method_name
-     * </ul>
+     * Runs the contents of the file as a Python program.
      * 
-     * @parameter expression="${android.uiautomator.testClassOrMethod}"
+     * <pre>
+     * &lt;programs&gt;
+     *   &lt;program&gt;
+     *     &lt;filename&gt;foo.py&lt;/filename&gt;
+     *     &lt;options&gt;bar&lt;/options&gt;
+     *   &lt;program&gt;
+     *   &lt;program&gt;
+     *     &lt;filename&gt;foo2.py&lt;/filename&gt;
+     *   &lt;program&gt;
+     *   [..]
+     * &lt;/programs&gt;
+     * </pre>
      * 
+     * @parameter
      */
-    private String[] uiautomatorTestClassOrMethods;
-
-    @PullParameter( required = false, defaultValueGetterMethod = "getTestClassOrMethods" )
-    private String[] parsedTestClassOrMethods;
-
-    /**
-     * Decides whether to run the test to completion on the device even if its parent process is terminated (for
-     * example, if the device is disconnected).
-     * 
-     * @parameter expression="${android.uiautomator.noHup}"
-     * 
-     */
-    private Boolean uiautomatorNoHup;
-
-    @PullParameter( defaultValue = "false" )
-    private Boolean parsedNoHup;
-
-    /**
-     * Decides whether to wait for debugger to connect before starting.
-     * 
-     * @parameter expression="${android.uiautomator.debug}"
-     * 
-     */
-    private Boolean uiautomatorDebug = false;
-
-    @PullParameter( defaultValue = "false" )
-    private Boolean parsedDebug;
-
-    /**
-     * Decides whether to use a dump file or not.
-     * 
-     * @parameter expression="${android.uiautomator.useDump}"
-     * 
-     */
-    private Boolean uiautomatorUseDump;
-
-    @PullParameter( defaultValue = "false" )
-    private Boolean parsedUseDump;
-
-    /**
-     * Generate an XML file with a dump of the current UI hierarchy. If a filepath is not specified, by default, the
-     * generated dump file is stored on the device in this location /storage/sdcard0/window_dump.xml.
-     * 
-     * @parameter expression="${android.uiautomator.dumpFilePath}"
-     * 
-     */
-    private String uiautomatorDumpFilePath;
-
-    @PullParameter( required = false, defaultValue = "/storage/sdcard0/window_dump.xml" )
-    private String parsedDumpFilePath;
+    @PullParameter( required = false, defaultValueGetterMethod = "getPrograms" )
+    private List< Program > parsedPrograms;
 
     /**
      * Create a junit xml format compatible output file containing the test results for each device the instrumentation
@@ -263,74 +215,44 @@ public class UIAutomatorMojo extends AbstractAndroidMojo
      * Defaults to false.
      * 
      * @optional
-     * @parameter expression="${android.uiautomator.createReport}"
+     * @parameter expression="${android.monkeyrunner.createReport}"
      * 
      */
-    private Boolean uiautomatorCreateReport;
+    private Boolean monkeyCreateReport;
 
     @PullParameter( defaultValue = "false" )
     private Boolean parsedCreateReport;
 
     /**
-     * Adds a suffix to the report name. For example if parameter reportSuffix is "-mySpecialReport",
-     * the name of the report will be TEST-deviceid-mySpecialReport.xml
-     *
-     * Defaults to null. Hence, in the default case, the name of the report will be TEST-deviceid.xml.
-     *
-     * @optional
-     * @parameter expression="${android.uiautomator.reportSuffix}"
-     */
-    private String uiautomatorReportSuffix;
-
-    @PullParameter( required = false, defaultValueGetterMethod = "getReportSuffix" )
-    private String parsedReportSuffix;
-
-    /**
-     * Decides whether or not to take screenshots when tests execution results in failure or error. Screenshots use the
-     * utiliy screencap that is usually available within emulator/devices with SDK >= 16.
+     * Decides whether or not to inject device serial number as a parameter to each monkey runner script. The parameter
+     * will be the first parameter passed to the script. This parameter allows to support monkey runner tests on
+     * multiple devices. In that case, monkey runner scripts have to be modified to take the new parameter into account.
+     * Follow that <a href="http://stackoverflow.com/a/13460438/693752">thread on stack over flow to learn more about
+     * it</a>.
      * 
-     * @parameter expression="${android.uiautomator.takeScreenshotOnFailure}"
+     * Defaults to false.
+     * 
+     * @parameter expression="${android.monkeyrunner.injectDeviceSerialNumberIntoScript}"
      * 
      */
-    private Boolean uiautomatorTakeScreenshotOnFailure;
+    private Boolean monkeyInjectDeviceSerialNumberIntoScript;
 
     @PullParameter( defaultValue = "false" )
-    private Boolean parsedTakeScreenshotOnFailure;
+    private Boolean parsedInjectDeviceSerialNumberIntoScript;
 
-    /**
-     * Location of the screenshots on device. This value is only taken into account if takeScreenshotOnFailure = true.
-     * If a filepath is not specified, by default, the screenshots will be located at /sdcard/uiautomator-screenshots/.
-     * 
-     * @parameter expression="${android.uiautomator.screenshotsPathOnDevice}"
-     * 
-     */
-    private String uiautomatorScreenshotsPathOnDevice;
+    private long elapsedTime;
 
-    @PullParameter( required = false, defaultValue = "/sdcard/uiautomator-screenshots/" )
-    private String parsedScreenshotsPathOnDevice;
-    
-    /**
-     * <p>Specifies a prefix for custom user properties that will be sent 
-     * through to UIAutomator with the <code>"-e key value"</code> parameter.</p>
-     * 
-     * <p>If any user property is needed in a test case, this is the way to send it through.
-     * User credentials for example.</p>
-     * 
-     * <p>If no prefix value is specified no user property will be sent.</p>
-     * 
-     * <p>Usage example:</p>
-     * <p><code>&lt;propertiesKeyPrefix&gt;UIA&lt;/propertiesKeyPrefix&gt;</code></p>
-     * <p>And run it with:</p>
-     * <p><code>&gt; mvn &lt;goal&gt; "-DUIAkey=value"</code></p>
-     * <p>would become <code>"-e key value"</code> as it would be runned from adb</p>
-     * 
-     * @parameter expression="${android.uiautomator.propertiesKeyPrefix}"
-     * 
-     */
-    private String uiautomatorPropertiesKeyPrefix;
+    private ITestRunListener[] mTestListeners;
 
-    @PullParameter( required = false, defaultValueGetterMethod = "getPropertiesKeyPrefix" )
-    private String parsedPropertiesKeyPrefix;
+    private Map< String, String > runMetrics;
+
+    private String mRunName;
+
+    private int eventCount;
+
+    private TestIdentifier mCurrentTestIndentifier;
+
+    private MonkeyRunnerErrorListener errorListener;
 
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException
@@ -338,10 +260,18 @@ public class UIAutomatorMojo extends AbstractAndroidMojo
         ConfigHandler configHandler = new ConfigHandler( this );
         configHandler.parseConfiguration();
 
-        if ( isEnableIntegrationTest() )
+        doWithDevices( new DeviceCallback()
         {
-            playTests();
-        }
+            @Override
+            public void doWithDevice( IDevice device ) throws MojoExecutionException, MojoFailureException
+            {
+                AndroidTestRunListener testRunListener = new AndroidTestRunListener( project, device );
+                if ( isEnableIntegrationTest() )
+                {
+                    run( device, testRunListener );
+                }
+            }
+        } );
     }
 
     /**
@@ -367,127 +297,225 @@ public class UIAutomatorMojo extends AbstractAndroidMojo
     /**
      * Actually plays tests.
      * 
+     * @param device
+     *            the device on which tests are going to be executed.
+     * @param iTestRunListeners
+     *            test run listeners.
      * @throws MojoExecutionException
-     *             if at least a test threw an exception and isIgnoreTestFailures is false..
+     *             if exercising app threw an exception and isIgnoreTestFailures is false..
      * @throws MojoFailureException
-     *             if at least a test failed and isIgnoreTestFailures is false.
+     *             if exercising app failed and isIgnoreTestFailures is false.
      */
-    protected void playTests() throws MojoExecutionException, MojoFailureException
+    protected void run( IDevice device, ITestRunListener... iTestRunListeners ) throws MojoExecutionException,
+            MojoFailureException
     {
 
-        getLog().debug( "Parsed values for Android UI UIAutomator invocation: " );
-        getLog().debug( "jarFile:" + parsedJarFile );
-        String testClassOrMethodString = buildSpaceSeparatedString( parsedTestClassOrMethods );
-        getLog().debug( "testClassOrMethod:" + testClassOrMethodString );
-        getLog().debug( "createReport:" + parsedCreateReport );
+        this.mTestListeners = iTestRunListeners;
 
-        DeviceCallback instrumentationTestExecutor = new DeviceCallback()
+        getLog().debug( "Parsed values for Android Monkey Runner invocation: " );
+
+        CommandExecutor executor = CommandExecutor.Factory.createDefaultCommmandExecutor();
+        if ( !Os.isFamily( Os.FAMILY_WINDOWS ) )
         {
-            @Override
-            public void doWithDevice( final IDevice device ) throws MojoExecutionException, MojoFailureException
+            executor.setCustomShell( new CustomBourneShell() );
+        }
+        executor.setLogger( this.getLog() );
+
+        String command = getAndroidSdk().getMonkeyRunnerPath();
+
+        List< String > pluginParameters = new ArrayList< String >();
+
+        if ( parsedPlugins != null && parsedPlugins.length != 0 )
+        {
+            for ( String plugin : parsedPlugins )
             {
-                String deviceLogLinePrefix = DeviceHelper.getDeviceLogLinePrefix( device );
+                String pluginFilePath = new File( project.getBasedir(), plugin ).getAbsolutePath();
+                pluginParameters.add( "-plugin " + pluginFilePath );
+            }
+        }
 
-                UIAutomatorRemoteAndroidTestRunner automatorRemoteAndroidTestRunner //
-                = new UIAutomatorRemoteAndroidTestRunner( parsedJarFile, device );
+        if ( parsedPrograms != null && !parsedPrograms.isEmpty() )
+        {
+            handleTestRunStarted();
+            errorListener = new MonkeyRunnerErrorListener();
+            executor.setErrorListener( errorListener );
 
-                automatorRemoteAndroidTestRunner.setRunName( "ui uiautomator tests" );
-                automatorRemoteAndroidTestRunner.setDebug( uiautomatorDebug );
-                automatorRemoteAndroidTestRunner.setTestClassOrMethods( parsedTestClassOrMethods );
-                automatorRemoteAndroidTestRunner.setNoHup( parsedNoHup );
-                automatorRemoteAndroidTestRunner.setUserProperties( session.getUserProperties(), 
-                        parsedPropertiesKeyPrefix );
-                
-                if ( parsedUseDump )
+            for ( Program program : parsedPrograms )
+            {
+                List< String > parameters = new ArrayList< String >( pluginParameters );
+
+                String programFileName = new File( project.getBasedir(), program.getFilename() ).getAbsolutePath();
+                parameters.add( programFileName );
+                String testName = programFileName;
+                if ( testName.contains( "/" ) )
                 {
-                    automatorRemoteAndroidTestRunner.setDumpFilePath( parsedDumpFilePath );
+                    testName.substring( testName.indexOf( '/' ) + 1 );
+                }
+                mCurrentTestIndentifier = new TestIdentifier( "MonkeyTest ", testName );
+
+                String programOptions = program.getOptions();
+                if ( parsedInjectDeviceSerialNumberIntoScript != null && parsedInjectDeviceSerialNumberIntoScript )
+                {
+                    parameters.add( device.getSerialNumber() );
+                }
+                if ( programOptions != null && !StringUtils.isEmpty( programOptions ) )
+                {
+                    parameters.add( programOptions );
                 }
 
-                getLog().info( deviceLogLinePrefix + "Running ui uiautomator tests in" + parsedJarFile );
                 try
                 {
-                    AndroidTestRunListener testRunListener = new AndroidTestRunListener( project, device );
-                    automatorRemoteAndroidTestRunner.run( testRunListener );
-                    if ( testRunListener.hasFailuresOrErrors() && !isIgnoreTestFailures() )
+                    getLog().info( "Running command: " + command );
+                    getLog().info( "with parameters: " + parameters );
+                    handleTestStarted();
+                    executor.executeCommand( command, parameters, true );
+                    handleTestEnded();
+                }
+                catch ( ExecutionException e )
+                {
+                    getLog().info( "Monkey runner produced errors" );
+                    handleTestRunFailed( e.getMessage() );
+
+                    if ( !isIgnoreTestFailures() )
                     {
-                        throw new MojoFailureException( deviceLogLinePrefix + "Tests failed on device." );
+                        getLog().info( "Project is configured to fail on error." );
+                        getLog().info(
+                                "Inspect monkey runner reports or re-run with -X to see monkey runner errors in log" );
+                        getLog().info( "Failing build as configured. Ignore following error message." );
+                        if ( errorListener.hasError )
+                        {
+                            getLog().info( "Stack trace is:" );
+                            getLog().info( errorListener.getStackTrace() );
+                        }
+                        throw new MojoExecutionException( "", e );
                     }
-                    if ( testRunListener.testRunFailed() )
-                    {
-                        throw new MojoFailureException( deviceLogLinePrefix + "Test run failed to complete: "
-                                + testRunListener.getTestRunFailureCause() );
-                    }
-                    if ( testRunListener.threwException() && !isIgnoreTestFailures() )
-                    {
-                        throw new MojoFailureException( deviceLogLinePrefix + testRunListener.getExceptionMessages() );
-                    }
                 }
-                catch ( TimeoutException e )
+
+                if ( errorListener.hasError() )
                 {
-                    throw new MojoExecutionException( deviceLogLinePrefix + "timeout", e );
-                }
-                catch ( AdbCommandRejectedException e )
-                {
-                    throw new MojoExecutionException( deviceLogLinePrefix + "adb command rejected", e );
-                }
-                catch ( ShellCommandUnresponsiveException e )
-                {
-                    throw new MojoExecutionException( deviceLogLinePrefix + "shell command " + "unresponsive", e );
-                }
-                catch ( IOException e )
-                {
-                    throw new MojoExecutionException( deviceLogLinePrefix + "IO problem", e );
+                    handleCrash();
                 }
             }
-        };
-
-        instrumentationTestExecutor = new ScreenshotServiceWrapper( instrumentationTestExecutor, project, getLog() );
-
-        doWithDevices( instrumentationTestExecutor );
-    }
-
-    private String getJarFile()
-    {
-        if ( parsedJarFile == null )
-        {
-            File jarFilePath = new File( project.getBuild().getDirectory() + File.separator
-                    + project.getBuild().getFinalName() + ".jar" );
-            return jarFilePath.getName();
-        }
-        return parsedJarFile;
-    }
-
-    private String[] getTestClassOrMethods()
-    {
-        // null if not overriden by configuration
-        return parsedTestClassOrMethods;
-    }
-
-    private String getReportSuffix()
-    {
-        return parsedReportSuffix;
-    }
-    
-    private String getPropertiesKeyPrefix()
-    {
-        return parsedPropertiesKeyPrefix;
-    }
-
-    /**
-     * Helper method to build a comma separated string from a list. Blank strings are filtered out
-     * 
-     * @param lines
-     *            A list of strings
-     * @return Comma separated String from given list
-     */
-    protected static String buildSpaceSeparatedString( String[] lines )
-    {
-        if ( lines == null || lines.length == 0 )
-        {
-            return null;
+            handleTestRunEnded();
         }
 
-        return StringUtils.join( lines, " " );
+        getLog().info( "Monkey runner test runs completed successfully." );
+    }
+
+    private void handleTestRunStarted()
+    {
+        runMetrics = new HashMap< String, String >();
+        elapsedTime = System.currentTimeMillis();
+        for ( ITestRunListener listener : mTestListeners )
+        {
+            listener.testRunStarted( mRunName, eventCount );
+        }
+    }
+
+    private void handleTestRunFailed( String error )
+    {
+        for ( ITestRunListener listener : mTestListeners )
+        {
+            listener.testRunFailed( error );
+        }
+    }
+
+    private void handleTestRunEnded()
+    {
+        elapsedTime = System.currentTimeMillis() - elapsedTime;
+
+        for ( ITestRunListener listener : mTestListeners )
+        {
+            listener.testRunEnded( elapsedTime, runMetrics );
+        }
+    }
+
+    private void handleTestStarted()
+    {
+        System.out.println( "TEST START " + mTestListeners.length );
+        for ( ITestRunListener listener : mTestListeners )
+        {
+            listener.testStarted( mCurrentTestIndentifier );
+        }
+    }
+
+    private void handleTestEnded()
+    {
+        if ( mCurrentTestIndentifier != null )
+        {
+            for ( ITestRunListener listener : mTestListeners )
+            {
+                listener.testEnded( mCurrentTestIndentifier, new HashMap< String, String >() );
+            }
+            mCurrentTestIndentifier = null;
+        }
+    }
+
+    private void handleCrash()
+    {
+
+        String trace = errorListener.getStackTrace();
+
+        for ( ITestRunListener listener : mTestListeners )
+        {
+            listener.testFailed( TestFailure.ERROR, mCurrentTestIndentifier, trace );
+        }
+        mCurrentTestIndentifier = null;
+
+    }
+
+    private final class MonkeyRunnerErrorListener implements CommandExecutor.ErrorListener
+    {
+        private StringBuilder stackTraceBuilder = new StringBuilder();
+        private boolean hasError = false;
+
+        @Override
+        public boolean isError( String error )
+        {
+
+            // Unconditionally ignore *All* build warning if configured to
+            if ( isIgnoreTestFailures() )
+            {
+                return false;
+            }
+
+            if ( hasError )
+            {
+                stackTraceBuilder.append( error ).append( '\n' );
+            }
+
+            final Pattern pattern = Pattern.compile( ".*error.*|.*exception.*", Pattern.CASE_INSENSITIVE );
+            final Matcher matcher = pattern.matcher( error );
+
+            // If the the reg.exp actually matches, we can safely say this is not an error
+            // since in theory the user told us so
+            if ( matcher.matches() )
+            {
+                hasError = true;
+                stackTraceBuilder.append( error ).append( '\n' );
+                return true;
+            }
+
+            // Otherwise, it is just another error
+            return false;
+        }
+
+        public String getStackTrace()
+        {
+            if ( hasError )
+            {
+                return stackTraceBuilder.toString();
+            }
+            else
+            {
+                return null;
+            }
+        }
+
+        public boolean hasError()
+        {
+            return hasError;
+        }
     }
 
     /**
@@ -593,11 +621,6 @@ public class UIAutomatorMojo extends AbstractAndroidMojo
         @Override
         public void testRunStarted( String runName, int tCount )
         {
-            if ( parsedTakeScreenshotOnFailure )
-            {
-                executeOnAdbShell( "rm -f " + parsedScreenshotsPathOnDevice + "/*screenshot.png" );
-                executeOnAdbShell( "mkdir " + parsedScreenshotsPathOnDevice );
-            }
 
             this.testCount = tCount;
             getLog().info( deviceLogLinePrefix + INDENT + "Run started: " + runName + ", " + testCount + " tests:" );
@@ -688,15 +711,6 @@ public class UIAutomatorMojo extends AbstractAndroidMojo
         @Override
         public void testFailed( TestFailure status, TestIdentifier testIdentifier, String trace )
         {
-            if ( parsedTakeScreenshotOnFailure )
-            {
-                String suffix = status == ERROR ? "_error" : "_failure";
-                String filepath = testIdentifier.getTestName() + suffix + SCREENSHOT_SUFFIX;
-
-                executeOnAdbShell( "screencap -p " + parsedScreenshotsPathOnDevice + "/" + filepath );
-                getLog().info( deviceLogLinePrefix + INDENT + INDENT + filepath + " saved." );
-            }
-
             if ( status == ERROR )
             {
                 ++testErrorCount;
@@ -935,19 +949,8 @@ public class UIAutomatorMojo extends AbstractAndroidMojo
 
                 FileUtils.forceMkdir( new File( directory ) );
 
-                StringBuilder sb = new StringBuilder();
-
-                sb.append( directory ).append( "/TEST-" )
-                    .append( DeviceHelper.getDescriptiveName( device ) );
-
-                if ( StringUtils.isNotBlank( parsedReportSuffix ) )
-                {
-                    //Safety first
-                    sb.append( parsedReportSuffix.replace( "/", "" ).replace( "\\", "" ) );
-                } 
-
-                String fileName = sb.append( ".xml" ).toString();
-
+                String fileName = new StringBuilder().append( directory ).append( "/TEST-" )
+                        .append( DeviceHelper.getDescriptiveName( device ) ).append( ".xml" ).toString();
                 File reportFile = new File( fileName );
                 writer = new FileWriter( reportFile );
                 Result result = new StreamResult( writer );
@@ -1027,5 +1030,49 @@ public class UIAutomatorMojo extends AbstractAndroidMojo
         {
             return exceptionMessages.toString();
         }
+    }
+
+    /**
+     * @return default plugins.
+     */
+    public String[] getPlugins()
+    {
+        return parsedPlugins;
+    }
+
+    private static final class CustomBourneShell extends BourneShell
+    {
+        @Override
+        public List< String > getShellArgsList()
+        {
+            List< String > shellArgs = new ArrayList< String >();
+            List< String > existingShellArgs = super.getShellArgsList();
+
+            if ( existingShellArgs != null && !existingShellArgs.isEmpty() )
+            {
+                shellArgs.addAll( existingShellArgs );
+            }
+
+            return shellArgs;
+        }
+
+        @Override
+        public String[] getShellArgs()
+        {
+            String[] shellArgs = super.getShellArgs();
+            if ( shellArgs == null )
+            {
+                shellArgs = new String[ 0 ];
+            }
+
+            return shellArgs;
+        }
+
+    }
+
+    public List< Program > getPrograms()
+    {
+        // return null if not set
+        return parsedPrograms;
     }
 }

@@ -41,6 +41,10 @@ public class UIAutomator
      */
     private Boolean createReport;
     /**
+     * Mirror of {@link com.jayway.maven.plugins.android.standalonemojos.UIAutomatorMojo#reportSuffix}
+     */
+    private String reportSuffix;
+    /**
      * Mirror of {@link com.jayway.maven.plugins.android.standalonemojos.UIAutomatorMojo#takeScreenshotOnFailure}
      */
     private Boolean takeScreenshotOnFailure;
@@ -48,6 +52,10 @@ public class UIAutomator
      * Mirror of {@link com.jayway.maven.plugins.android.standalonemojos.UIAutomatorMojo#screenshotsPathOnDevice}
      */
     private String screenshotsPathOnDevice;
+    /**
+     * Mirror of {@link com.jayway.maven.plugins.android.standalonemojos.UIAutomatorMojo#parameterPrefix}
+     */
+    private String propertiesKeyPrefix;
 
     public Boolean isSkip()
     {
@@ -89,6 +97,11 @@ public class UIAutomator
         return createReport;
     }
 
+    public String getReportSuffix()
+    {
+        return reportSuffix;
+    }
+
     public Boolean isTakeScreenshotOnFailure()
     {
         return takeScreenshotOnFailure;
@@ -97,5 +110,10 @@ public class UIAutomator
     public String getScreenshotsPathOnDevice()
     {
         return screenshotsPathOnDevice;
+    }
+    
+    public String getPropertiesKeyPrefix()
+    {
+        return propertiesKeyPrefix;
     }
 }
