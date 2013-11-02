@@ -21,12 +21,12 @@
     where we depend on lower version (e.g. plugin-plugin) -->
     <parent>
         <groupId>com.simpligility.maven</groupId>
-        <artifactId>progressive-company-super-pom</artifactId>
-        <version>0.6.0</version>
+        <artifactId>progressive-organization-pom</artifactId>
+        <version>1.0.0</version>
     </parent>
     <groupId>com.jayway.maven.plugins.android.generation2</groupId>
     <artifactId>android-maven-plugin</artifactId>
-    <version>3.6.1-af</version>
+    <version>3.7.0-af</version>
     <packaging>maven-plugin</packaging>
     <name>Android Maven Plugin - android-maven-plugin</name>
     <description>Maven Plugin for Android Development</description>
@@ -53,20 +53,24 @@
         <easymock.version>3.2</easymock.version>
         <powermock.version>1.5.1</powermock.version>
         <aether.version>1.13.1</aether.version>
+        
+        <!-- Attention - make sure that the tools version is the versions of the transitive dependencies of the builder version -->
+        <android.builder.version>0.5.7</android.builder.version>
+        <android.tools.version>22.2.0</android.tools.version>
     </properties>
     <scm>
         <url>http://github.com/jayway/maven-android-plugin/tree/${scm.branch}</url>
         <connection>scm:git:git://github.com/jayway/maven-android-plugin.git</connection>
         <developerConnection>scm:git:ssh://git@github.com/jayway/maven-android-plugin.git</developerConnection>
-      <tag>3.6.1</tag>
+      <tag>3.7.0</tag>
   </scm>
     <issueManagement>
         <system>Google Code Issue Tracking</system>
         <url>http://code.google.com/p/maven-android-plugin/issues/list</url>
     </issueManagement>
     <ciManagement>
-        <system>Jenkins</system>
-        <url>http://jenkins.josefson.org/job/maven-android-plugin-master/</url>
+        <system>Travis</system>
+        <url>https://travis-ci.org/jayway/maven-android-plugin</url>
     </ciManagement>
     <licenses>
         <license>
@@ -119,10 +123,61 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <groupId>com.android.tools</groupId>
+            <artifactId>common</artifactId>
+            <version>${android.tools.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.android.tools</groupId>
+            <artifactId>dvlib</artifactId>
+            <version>${android.tools.version}</version>
+        </dependency>
+         <dependency>
+            <groupId>com.android.tools</groupId>
+            <artifactId>sdk-common</artifactId>
+            <version>${android.tools.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.android.tools</groupId>
+            <artifactId>sdklib</artifactId>
+            <version>${android.tools.version}</version>
+        </dependency>
+        <dependency>
             <groupId>com.android.tools.build</groupId>
             <artifactId>builder</artifactId>
-            <version>0.4.2</version>
+            <version>${android.builder.version}</version>
         </dependency>
+        <dependency>
+            <groupId>com.android.tools.build</groupId>
+            <artifactId>manifest-merger</artifactId>
+            <version>${android.tools.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.android.tools.ddms</groupId>
+            <artifactId>ddmlib</artifactId>
+            <version>${android.tools.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.android.tools.layoutlib</groupId>
+            <artifactId>layoutlib-api</artifactId>
+            <version>${android.tools.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.android.tools.lint</groupId>
+            <artifactId>lint</artifactId>
+            <version>${android.tools.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.android.tools.lint</groupId>
+            <artifactId>lint-api</artifactId>
+            <version>${android.tools.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.android.tools.lint</groupId>
+            <artifactId>lint-checks</artifactId>
+            <version>${android.tools.version}</version>
+        </dependency>
+
         <dependency>
             <groupId>org.apache.maven</groupId>
             <artifactId>maven-artifact</artifactId>
@@ -301,7 +356,8 @@
                     <autoVersionSubmodules>true</autoVersionSubmodules>
                     <useReleaseProfile>false</useReleaseProfile>
                     <arguments>-Pofficial-release</arguments>
-                    <goals>plugin:report deploy site-deploy</goals>
+                    <!--  only site since the ghpages are deployed in that phase -->
+                    <goals>plugin:report deploy site</goals>
                 </configuration>
             </plugin>
             <plugin>
@@ -404,8 +460,6 @@
                     </reportPlugins>
                 </configuration>
             </plugin>
-
-<!--
             <plugin>
                 <groupId>org.sonatype.plugins</groupId>
                 <artifactId>nexus-staging-maven-plugin</artifactId>
@@ -417,26 +471,15 @@
                     <stagingProfileId>26a4c760b261ca</stagingProfileId>
                 </configuration>
             </plugin>
--->
         </plugins>
     </build>
 
     <distributionManagement>
-        <repository>
-            <id>oss.sonatype.org-jayway-staging</id>
-            <name>OpenSource Release Staging on Sonatype.org</name>
-            <url>http://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
-        </repository>
         <snapshotRepository>
             <id>oss.sonatype.org-jayway-snapshots</id>
             <name>Jayway OpenSource SNAPSHOTs on Sonatype.org</name>
             <url>http://oss.sonatype.org/content/repositories/jayway-snapshots/</url>
         </snapshotRepository>
-        <site>
-            <id>maven-android-plugin-m2site.googlecode.com</id>
-            <name>maven-android-plugin-m2site on Google Code</name>
-            <url>${env.MAVEN_ANDROID_PLUGIN_M2SITE_SVN_WORKINGCOPY}</url>
-        </site>
     </distributionManagement>
 
     <profiles>
@@ -444,6 +487,23 @@
             <id>official-release</id>
             <build>
                 <plugins>
+                    <plugin>
+                        <!-- deploy the site to github pages -->
+                        <groupId>com.github.github</groupId>
+                        <artifactId>site-maven-plugin</artifactId>
+                        <configuration>
+                            <server>github</server> <!--  the id of the server with the passwords in settings.xml -->
+                            <message>Creating site for ${project.version}</message>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <phase>site</phase>
+                                <goals>
+                                    <goal>site</goal> <!-- the site goal uploads to ghpages -->
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
                     <!-- We want to sign the artifact, the POM, and all attached artifacts -->
                     <plugin>
                         <artifactId>maven-gpg-plugin</artifactId>
@@ -460,7 +520,6 @@
                             </execution>
                         </executions>
                     </plugin>
-                    <!-- We want to deploy the artifact to a staging location for perusal -->
                     <plugin>
                         <inherited>true</inherited>
                         <artifactId>maven-deploy-plugin</artifactId>
