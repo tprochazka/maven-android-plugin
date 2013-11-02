@@ -460,6 +460,7 @@
                     </reportPlugins>
                 </configuration>
             </plugin>
+<!--
             <plugin>
                 <groupId>org.sonatype.plugins</groupId>
                 <artifactId>nexus-staging-maven-plugin</artifactId>
@@ -471,6 +472,7 @@
                     <stagingProfileId>26a4c760b261ca</stagingProfileId>
                 </configuration>
             </plugin>
+-->
         </plugins>
     </build>
 
