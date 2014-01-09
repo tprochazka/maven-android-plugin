@@ -37,10 +37,6 @@ import com.jayway.maven.plugins.android.AbstractAndroidMojo;
 import com.jayway.maven.plugins.android.CommandExecutor;
 import com.jayway.maven.plugins.android.ExecutionException;
 import com.jayway.maven.plugins.android.configuration.Dex;
-import com.jayway.maven.plugins.android.phase04processclasses.ProguardMojo;
-
-import static com.jayway.maven.plugins.android.common.AndroidExtension.AAR;
-
 
 /**
  * Converts compiled Java classes to the Android dex format.
@@ -67,6 +63,7 @@ public class DexMojo extends AbstractAndroidMojo
      *   &lt;optimize&gt;true|false&lt;/optimize&gt;
      *   &lt;preDex&gt;true|false&lt;/preDex&gt;
      *   &lt;preDexLibLocation&gt;path to predexed libraries, defaults to target/dexedLibs&lt;/preDexLibLocation&gt;
+     *   &lt;incremental&gt;true|false&lt;/incremental&gt;
      * &lt;/dex&gt;
      * </pre>
      * <p/>
@@ -119,12 +116,26 @@ public class DexMojo extends AbstractAndroidMojo
      */
     private String dexPreDexLibLocation;
 
+    /**
+     * Decides whether to pass the --incremental flag to dx.
+     *
+     * @parameter expression="${android.dex.incremental}" default-value="false"
+     */
+    private boolean dexIncremental;
+
+    /**
+     * The name of the obfuscated JAR
+     * @parameter expression="${android.proguard.obfuscatedJar}"
+     */
+    private File obfuscatedJar;
+
     private String[] parsedJvmArguments;
     private boolean parsedCoreLibrary;
     private boolean parsedNoLocals;
     private boolean parsedOptimize;
     private boolean parsedPreDex;
     private String parsedPreDexLibLocation;
+    private boolean parsedIncremental;
 
     /**
      * @throws MojoExecutionException
@@ -170,19 +181,13 @@ public class DexMojo extends AbstractAndroidMojo
      */
     private Set< File > getDexInputFiles()
     {
-
         Set< File > inputs = new HashSet< File >();
 
-        // ugly, don't know a better way to get this in mvn
-        File proguardJar = new File( project.getBuild().getDirectory(), ProguardMojo.PROGUARD_OBFUSCATED_JAR );
-
-        getLog().debug( "Checking for existence of: " + proguardJar.toString() );
-
-        if ( proguardJar.exists() )
+        if ( obfuscatedJar != null && obfuscatedJar.exists() )
         {
             // progurad has been run, use this jar
             getLog().debug( "Obfuscated jar exists, using that as input" );
-            inputs.add( proguardJar );
+            inputs.add( obfuscatedJar );
         }
         else
         {
@@ -191,15 +196,7 @@ public class DexMojo extends AbstractAndroidMojo
             inputs.add( new File( project.getBuild().getOutputDirectory() ) );
             for ( Artifact artifact : getAllRelevantDependencyArtifacts() )
             {
-                if ( artifact.getType().equals( AAR ) )
-                {
-                    final String apkLibResDir = getLibraryUnpackDirectory( artifact ) + "/classes.jar";
-                    if ( new File( apkLibResDir ).exists() )
-                    {
-                        inputs.add( new File( apkLibResDir ) );
-                    }
-                }
-                else if ( artifact.getType().equals( "so" ) || artifact.getType().equals( "a" ) )
+                if ( artifact.getType().equals( "so" ) || artifact.getType().equals( "a" ) )
                 {
                     // Ignore native dependencies - no need for dexer to see those
                     continue;
@@ -270,6 +267,14 @@ public class DexMojo extends AbstractAndroidMojo
             {
                 parsedPreDexLibLocation = dex.getPreDexLibLocation();
             }
+            if ( dex.isIncremental() == null )
+            {
+                parsedIncremental = dexIncremental;
+            }
+            else
+            {
+                parsedIncremental = dex.isIncremental();
+            }
         }
         else
         {
@@ -279,6 +284,7 @@ public class DexMojo extends AbstractAndroidMojo
             parsedOptimize = dexOptimize;
             parsedPreDex = dexPreDex;
             parsedPreDexLibLocation = dexPreDexLibLocation;
+            parsedIncremental = dexIncremental;
         }
     }
 
@@ -377,6 +383,10 @@ public class DexMojo extends AbstractAndroidMojo
         if ( parsedCoreLibrary )
         {
             commands.add( "--core-library" );
+        }
+        if ( parsedIncremental )
+        {
+            commands.add( "--incremental" );
         }
         commands.add( "--output=" + outputFile.getAbsolutePath() );
         if ( parsedNoLocals )

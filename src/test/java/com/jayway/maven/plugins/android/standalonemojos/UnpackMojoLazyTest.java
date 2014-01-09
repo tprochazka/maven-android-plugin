@@ -1,22 +1,29 @@
-package com.jayway.maven.plugins.android.phase09package;
 
-import java.util.ArrayList;
-import java.util.List;
+package com.jayway.maven.plugins.android.standalonemojos;
 
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.FixMethodOrder;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.junit.runners.MethodSorters;
 import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameters;
 
 import com.jayway.maven.plugins.android.AbstractAndroidMojoTestCase;
 import com.jayway.maven.plugins.android.config.ConfigHandler;
+import com.jayway.maven.plugins.android.configuration.MetaInf;
 
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * @author Pappy STĂNESCU <a href="mailto:pappy.stanescu&#64;gmail.com">&lt;pappy.stanescu&#64;gmail.com&gt;</a>
+ */
 @RunWith( Parameterized.class )
-public class ApkMojoTest
-extends AbstractAndroidMojoTestCase<ApkMojo>
+public class UnpackMojoLazyTest
+extends AbstractAndroidMojoTestCase<UnpackMojo>
 {
 
 	@Parameters
@@ -24,27 +31,23 @@ extends AbstractAndroidMojoTestCase<ApkMojo>
 	{
 		final List<Object[]> suite = new ArrayList<Object[]>();
 
-		suite.add( new Object[] { "apk-config-project1", null } );
-		suite.add( new Object[] { "apk-config-project2", new String[] { "persistence.xml" } } );
-		suite.add( new Object[] { "apk-config-project3", new String[] { "services/**", "persistence.xml" } } );
+		suite.add( new Object[] { "unpack-config-lazy" } );
+		suite.add( new Object[] { "unpack-config-lazy-deprecated" } );
 
 		return suite;
 	}
 
 	private final String	projectName;
 
-	private final String[]	expected;
-
-	public ApkMojoTest( String projectName, String[] expected )
+	public UnpackMojoLazyTest( String projectName )
 	{
 		this.projectName = projectName;
-		this.expected = expected;
 	}
 
 	@Override
 	public String getPluginGoalName()
 	{
-		return "apk";
+		return "unpack";
 	}
 
 	@Override
@@ -63,19 +66,25 @@ extends AbstractAndroidMojoTestCase<ApkMojo>
 		super.tearDown();
 	}
 
+	@Override
+	public String getName()
+	{
+		return projectName;
+	}
+	
 	@Test
 	public void testConfigHelper()
 	throws Exception
 	{
-		final ApkMojo mojo = createMojo( this.projectName );
-
+		final UnpackMojo mojo = createMojo( this.projectName );
 		final ConfigHandler cfh = new ConfigHandler( mojo );
 
 		cfh.parseConfiguration();
 
-		final String[] includes = getFieldValue( mojo, "apkMetaIncludes" );
-
-		Assert.assertArrayEquals( this.expected, includes );
+		Boolean result = getFieldValue( mojo, "unpackLazy" );
+		
+		Assert.assertNotNull(result);
+		Assert.assertTrue( result );
 	}
 
 	protected <T> T getFieldValue( Object object, String fieldName )

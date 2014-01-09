@@ -12,8 +12,8 @@ import org.apache.maven.RepositoryUtils;
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
-import org.sonatype.aether.util.artifact.DefaultArtifact;
-import org.sonatype.aether.util.artifact.JavaScopes;
+import org.eclipse.aether.artifact.DefaultArtifact;
+import org.eclipse.aether.util.artifact.JavaScopes;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -108,6 +108,17 @@ public class ProguardMojo extends AbstractAndroidMojo
     private String[] parsedConfigs;
 
     /**
+     * Additional ProGuard options
+     *
+     * @parameter expression="${android.proguard.options}"
+     * @optional
+     */
+    private String[] proguardOptions;
+
+    @PullParameter( defaultValueGetterMethod = "getDefaultProguardOptions" )
+    private String[] parsedOptions;
+
+    /**
      * Path to the proguard jar and therefore version of proguard to be used. By default this will load the jar from
      * the Android SDK install. Overriding it with an absolute path allows you to use a newer or custom proguard
      * version..
@@ -163,9 +174,17 @@ public class ProguardMojo extends AbstractAndroidMojo
      */
     private String outputDirectory;
 
+   /**
+    * @parameter expression="${android.proguard.obfuscatedJar}" 
+    *            default-value="${project.build.directory}/${project.build.finalName}_obfuscated.jar"
+    */
+   private String obfuscatedJar;
+
     @PullParameter( defaultValue = "proguard" )
     private String parsedOutputDirectory;
     
+    @PullParameter
+    private String parsedObfuscatedJar;
 
     /**
      * Extra JVM Arguments. Using these you can e.g. increase memory for the jvm running the build.
@@ -212,6 +231,15 @@ public class ProguardMojo extends AbstractAndroidMojo
     private Boolean parsedIncludeJdkLibs;
 
     /**
+     * If set to true the mapping.txt file will be attached as artifact of type <code>map</code>
+     * @parameter expression="${android.proguard.attachMap}"
+     */
+    private Boolean attachMap;
+    
+    @PullParameter( defaultValue = "false" )
+    private Boolean parsedAttachMap;
+
+    /**
      * The plugin dependencies.
      *
      * @parameter expression="${plugin.artifacts}"
@@ -219,8 +247,6 @@ public class ProguardMojo extends AbstractAndroidMojo
      * @readonly
      */
     protected List<Artifact> pluginDependencies;
-
-    public static final String PROGUARD_OBFUSCATED_JAR = "proguard-obfuscated.jar";
 
     private static final Collection<String> ANDROID_LIBRARY_EXCLUDED_FILTER = Arrays
             .asList( "org/xml/**", "org/w3c/**", "java/**", "javax/**" );
@@ -289,13 +315,15 @@ public class ProguardMojo extends AbstractAndroidMojo
 
         if ( ! parsedSkip )
         {
+            // TODO: make the property name a constant sometime after switching to @Mojo
+            project.getProperties().setProperty( "android.proguard.obfuscatedJar", obfuscatedJar );
+
             executeProguard();
         }
     }
 
     private void executeProguard() throws MojoExecutionException
     {
-
         final File proguardDir = new File( project.getBuild().getDirectory(), parsedOutputDirectory );
           
         if ( ! proguardDir.exists() && ! proguardDir.mkdir() )
@@ -334,19 +362,26 @@ public class ProguardMojo extends AbstractAndroidMojo
         collectInputFiles( commands );
 
         commands.add( "-outjars" );
-        commands.add( "'" + project.getBuild().getDirectory() + File.separator + PROGUARD_OBFUSCATED_JAR + "'" );
-
+        commands.add( "'" + obfuscatedJar + "'" );
+        
         commands.add( "-dump" );
         commands.add( "'" + proguardDir + File.separator + "dump.txt'" );
         commands.add( "-printseeds" );
         commands.add( "'" + proguardDir + File.separator + "seeds.txt'" );
         commands.add( "-printusage" );
         commands.add( "'" + proguardDir + File.separator + "usage.txt'" );
+        
+        File mapFile = new File( proguardDir, "mapping.txt" );
+
         commands.add( "-printmapping" );
-        commands.add( "'" + proguardDir + File.separator + "mapping.txt'" );
+        commands.add( "'" + mapFile + "'" );
+
+        commands.addAll( Arrays.asList( parsedOptions ) );
 
         final String javaExecutable = getJavaExecutable().getAbsolutePath();
+        
         getLog().info( javaExecutable + " " + commands.toString() );
+        
         try
         {
             executor.executeCommand( javaExecutable, commands, project.getBasedir(), false );
@@ -354,6 +389,11 @@ public class ProguardMojo extends AbstractAndroidMojo
         catch ( ExecutionException e )
         {
             throw new MojoExecutionException( "", e );
+        }
+        
+        if ( parsedAttachMap )
+        {
+            projectHelper.attachArtifact( project, "map", mapFile );
         }
     }
 
@@ -627,6 +667,17 @@ public class ProguardMojo extends AbstractAndroidMojo
      * @see #parsedConfigs
      */
     private String[] getDefaultProguardConfigs()
+    {
+        return new String[0];
+    }
+
+    /**
+     * Get the default ProGuard options.
+     *
+     * @return
+     * @see #parsedOptions
+     */
+    private String[] getDefaultProguardOptions()
     {
         return new String[0];
     }

@@ -37,9 +37,9 @@ import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.project.MavenProjectHelper;
 import org.codehaus.plexus.util.DirectoryScanner;
-import org.sonatype.aether.RepositorySystem;
-import org.sonatype.aether.RepositorySystemSession;
-import org.sonatype.aether.repository.RemoteRepository;
+import org.eclipse.aether.RepositorySystem;
+import org.eclipse.aether.RepositorySystemSession;
+import org.eclipse.aether.repository.RemoteRepository;
 
 import java.io.File;
 import java.net.MalformedURLException;
@@ -133,6 +133,14 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
     protected File sourceDirectory;
 
     /**
+     * The java target directory.
+     *
+     * @parameter default-value="${project.build.directory}"
+     * @readonly
+     */
+    protected File targetDirectory;
+
+    /**
      * The android resources directory.
      *
      * @parameter default-value="${project.basedir}/res"
@@ -214,7 +222,7 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
     /**
      * The <code>AndroidManifest.xml</code> file.
      *
-     * @parameter default-value="${project.basedir}/AndroidManifest.xml"
+     * @parameter expression="${android.manifestFile}" default-value="${project.basedir}/AndroidManifest.xml"
      */
     protected File androidManifestFile;
 
