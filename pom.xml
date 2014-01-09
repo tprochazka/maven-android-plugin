@@ -26,7 +26,7 @@
     </parent>
     <groupId>com.jayway.maven.plugins.android.generation2</groupId>
     <artifactId>android-maven-plugin</artifactId>
-    <version>3.8.1-af</version>
+    <version>3.8.2-af</version>
     <packaging>maven-plugin</packaging>
     <name>Android Maven Plugin - android-maven-plugin</name>
     <description>Maven Plugin for Android Development</description>
@@ -51,18 +51,18 @@
 
         <maven.api.version>3.1.1</maven.api.version>
         <easymock.version>3.2</easymock.version>
-        <powermock.version>1.5.1</powermock.version>
+        <powermock.version>1.5.2</powermock.version>
         <aether.version>0.9.0.M2</aether.version>
         
         <!-- Attention - make sure that the tools version is the versions of the transitive dependencies of the builder version -->
-        <android.builder.version>0.6.3</android.builder.version>
-        <android.tools.version>22.2.1</android.tools.version>
+        <android.builder.version>0.7.3</android.builder.version>
+        <android.tools.version>22.4.2</android.tools.version>
     </properties>
     <scm>
         <url>http://github.com/jayway/maven-android-plugin/tree/${scm.branch}</url>
         <connection>scm:git:git://github.com/jayway/maven-android-plugin.git</connection>
         <developerConnection>scm:git:ssh://git@github.com/jayway/maven-android-plugin.git</developerConnection>
-      <tag>3.8.1</tag>
+      <tag>3.8.2</tag>
     </scm>
     <issueManagement>
         <system>Google Code Issue Tracking</system>
@@ -229,13 +229,8 @@
           <artifactId>plexus-utils</artifactId>
           <version>3.0.15</version>
         </dependency>
-
-        <!--  this is a fork of the Apache project off their svn repo, released earlier to be able to use here
-            once the Maven team releases a version, we can change back to theirs, 
-            also see https://code.google.com/p/maven-android-plugin/issues/detail?id=423
-         -->
-        <dependency>
-            <groupId>com.simpligility.org.apache.maven.plugin-testing</groupId>
+       <dependency>
+            <groupId>org.apache.maven.plugin-testing</groupId>
             <artifactId>maven-plugin-testing-harness</artifactId>
             <version>3.0.0</version>
             <scope>test</scope>

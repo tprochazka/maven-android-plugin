@@ -21,17 +21,23 @@ import com.android.ddmlib.IDevice;
 import com.android.ddmlib.InstallException;
 import com.jayway.maven.plugins.android.common.AetherHelper;
 import com.jayway.maven.plugins.android.common.AndroidExtension;
+import com.jayway.maven.plugins.android.common.DependencyResolver;
 import com.jayway.maven.plugins.android.common.DeviceHelper;
 import com.jayway.maven.plugins.android.config.ConfigPojo;
 import com.jayway.maven.plugins.android.configuration.Ndk;
 import com.jayway.maven.plugins.android.configuration.Sdk;
+
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.filefilter.TrueFileFilter;
 import org.apache.commons.jxpath.JXPathContext;
 import org.apache.commons.jxpath.JXPathNotFoundException;
 import org.apache.commons.jxpath.xml.DocumentContainer;
 import org.apache.commons.lang.StringUtils;
 import org.apache.maven.artifact.Artifact;
+import org.apache.maven.artifact.handler.ArtifactHandler;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.plugin.AbstractMojo;
+import org.apache.maven.plugin.MojoExecution;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.project.MavenProject;
@@ -42,6 +48,8 @@ import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.repository.RemoteRepository;
 
 import java.io.File;
+import java.io.FileFilter;
+import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.ArrayList;
@@ -123,6 +131,13 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
      */
     protected MavenSession session;
 
+    /**
+     * @parameter expression="${mojoExecution}"
+     * @readonly
+     * @required
+     *
+     */
+    protected MojoExecution execution;
 
     /**
      * The java sources directory.
@@ -262,16 +277,6 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
     protected File extractedDependenciesDirectory;
 
     /**
-     * @parameter expression="${project.build.directory}/generated-sources/extracted-dependencies/res"
-     * @readonly
-     */
-    protected File extractedDependenciesRes;
-    /**
-     * @parameter expression="${project.build.directory}/generated-sources/extracted-dependencies/assets"
-     * @readonly
-     */
-    protected File extractedDependenciesAssets;
-    /**
      * @parameter expression="${project.build.directory}/generated-sources/extracted-dependencies/src/main/java"
      * @readonly
      */
@@ -283,17 +288,8 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
     protected File extractedDependenciesJavaResources;
 
     /**
-     * The combined resources directory. This will contain both the resources found in "res" as well as any resources
-     * contained in a apksources dependency.
-     *
-     * @parameter expression="${project.build.directory}/generated-sources/combined-resources/res"
-     * @readonly
-     */
-    protected File combinedRes;
-
-    /**
      * The combined assets directory. This will contain both the assets found in "assets" as well as any assets
-     * contained in a apksources dependency.
+     * contained in a apksources, apklib or aar dependencies.
      *
      * @parameter expression="${project.build.directory}/generated-sources/combined-assets/assets"
      * @readonly
@@ -301,9 +297,9 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
     protected File combinedAssets;
 
     /**
-     * Extract the apklib dependencies here
+     * Extract the library (aar and apklib) dependencies here.
      *
-     * @parameter expression="${project.build.directory}/unpack/apklibs"
+     * @parameter expression="${project.build.directory}/unpacked-libs"
      * @readonly
      */
     protected File unpackedApkLibsDirectory;
@@ -376,6 +372,13 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
      * @readonly
      */
     protected List<RemoteRepository> projectRepos;
+
+    /**
+     * @component
+     * @required
+     * @readonly
+     */
+    private ArtifactHandler artifactHandler;
 
     /**
      * Generates R.java into a different package.
@@ -511,7 +514,6 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
      */
     protected boolean release;
 
-
     /**
      *
      */
@@ -526,15 +528,19 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
      */
     protected static final List<String> EXCLUDED_DEPENDENCY_SCOPES = Arrays.asList( "provided", "system", "import" );
 
+    protected final DependencyResolver getDependencyResolver()
+    {
+        return new DependencyResolver( repoSystem, repoSession, projectRepos, artifactHandler );
+    }
+
     /**
      * @return a {@code Set} of dependencies which may be extracted and otherwise included in other artifacts. Never
      *         {@code null}. This excludes artifacts of the {@code EXCLUDED_DEPENDENCY_SCOPES} scopes.
      */
     protected Set<Artifact> getRelevantCompileArtifacts()
     {
-        final List<Artifact> allArtifacts = ( List<Artifact> ) project.getCompileArtifacts();
-        final Set<Artifact> results = filterOutIrrelevantArtifacts( allArtifacts );
-        return results;
+        final List<Artifact> allArtifacts = project.getCompileArtifacts();
+        return filterOutIrrelevantArtifacts( allArtifacts );
     }
 
     /**
@@ -543,9 +549,8 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
      */
     protected Set<Artifact> getRelevantDependencyArtifacts()
     {
-        final Set<Artifact> allArtifacts = ( Set<Artifact> ) project.getDependencyArtifacts();
-        final Set<Artifact> results = filterOutIrrelevantArtifacts( allArtifacts );
-        return results;
+        final Set<Artifact> allArtifacts = project.getDependencyArtifacts();
+        return filterOutIrrelevantArtifacts( allArtifacts );
     }
 
     /**
@@ -555,9 +560,8 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
      */
     protected Set<Artifact> getAllRelevantDependencyArtifacts()
     {
-        final Set<Artifact> allArtifacts = ( Set<Artifact> ) project.getArtifacts();
-        final Set<Artifact> results = filterOutIrrelevantArtifacts( allArtifacts );
-        return results;
+        final Set<Artifact> allArtifacts = project.getArtifacts();
+        return filterOutIrrelevantArtifacts( allArtifacts );
     }
 
     /**
@@ -1046,6 +1050,7 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
         final DocumentContainer documentContainer = new DocumentContainer( xmlURL );
         final Object packageName = JXPathContext.newContext( documentContainer )
                 .getValue( "manifest/@package", String.class );
+        getLog().debug( "Extracting package " + packageName + " from Manifest : "  + androidManifestFile );
         return ( String ) packageName;
     }
 
@@ -1243,7 +1248,7 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
      * @param apkLibraryArtifact
      * @return
      */
-    protected String getLibraryUnpackDirectory( Artifact apkLibraryArtifact )
+    public final String getLibraryUnpackDirectory( Artifact apkLibraryArtifact )
     {
         return AbstractAndroidMojo.getLibraryUnpackDirectory( unpackedApkLibsDirectory, apkLibraryArtifact );
     }
@@ -1355,5 +1360,45 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
         }
 
         protected abstract void runDo() throws MojoFailureException, MojoExecutionException;
+    }
+
+    /**
+     * Copies the files contained within the source folder to the target folder.
+     * <p>
+     * The the target folder doesn't exist it will be created.
+     * </p>
+     *
+     * @param sourceFolder      Folder from which to copy the resources.
+     * @param targetFolder      Folder to which to copy the files.
+     * @throws MojoExecutionException if the files cannot be copied.
+     */
+    protected final void copyFolder( File sourceFolder, File targetFolder ) throws MojoExecutionException
+    {
+        copyFolder( sourceFolder, targetFolder, TrueFileFilter.TRUE );
+    }
+
+    private void copyFolder( File sourceFolder, File targetFolder, FileFilter filter ) throws MojoExecutionException
+    {
+        if ( !sourceFolder.exists() )
+        {
+            return;
+        }
+
+        try
+        {
+            getLog().debug( "Copying " + sourceFolder + " to " + targetFolder );
+            if ( ! targetFolder.exists() )
+            {
+                if ( ! targetFolder.mkdirs() )
+                {
+                    throw new MojoExecutionException( "Could not create target directory " + targetFolder );
+                }
+            }
+            FileUtils.copyDirectory( sourceFolder, targetFolder, filter );
+        }
+        catch ( IOException e )
+        {
+            throw new MojoExecutionException( "Could not copy source folder to target folder", e );
+        }
     }
 }

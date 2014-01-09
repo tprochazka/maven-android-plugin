@@ -379,18 +379,10 @@ public class ApklibMojo extends AbstractAndroidMojo
                 commands.add( resOverlayDir.getAbsolutePath() );
             }
         }
-        if ( combinedRes.exists() )
+        if ( resourceDirectory.exists() )
         {
             commands.add( "-S" );
-            commands.add( combinedRes.getAbsolutePath() );
-        }
-        else
-        {
-            if ( resourceDirectory.exists() )
-            {
-                commands.add( "-S" );
-                commands.add( resourceDirectory.getAbsolutePath() );
-            }
+            commands.add( resourceDirectory.getAbsolutePath() );
         }
         for ( Artifact apkLibraryArtifact : getAllRelevantDependencyArtifacts() )
         {
@@ -405,16 +397,15 @@ public class ApklibMojo extends AbstractAndroidMojo
             }
         }
         commands.add( "--auto-add-overlay" );
-        if ( assetsDirectory.exists() )
+
+        // NB aapt only accepts a single assets parameter - combinedAssets is a merge of all assets
+        if ( combinedAssets.exists() )
         {
+            getLog().debug( "Adding assets folder : " + combinedAssets );
             commands.add( "-A" );
-            commands.add( assetsDirectory.getAbsolutePath() );
+            commands.add( combinedAssets.getAbsolutePath() );
         }
-        if ( extractedDependenciesAssets.exists() )
-        {
-            commands.add( "-A" );
-            commands.add( extractedDependenciesAssets.getAbsolutePath() );
-        }
+
         commands.add( "-I" );
         commands.add( androidJar.getAbsolutePath() );
         commands.add( "-F" );
