@@ -2,14 +2,15 @@ language: java
 jdk: oraclejdk7
 env:
   matrix:
-    # android-16 is always included
-    - ANDROID_SDKS=sysimg-16            ANDROID_TARGET=android-16  ANDROID_ABI=x86
+    # android-19 is always included
+    - ANDROID_SDKS=sysimg-19            ANDROID_TARGET=android-19  ANDROID_ABI=armeabi-v7a
 before_install:
   # Install base Android SDK
   - sudo apt-get update -qq
-  - if [ `uname -m` = x86_64 ]; then sudo apt-get install -qq --force-yes libgd2-xpm ia32-libs ia32-libs-multiarch > /dev/null; fi
-  - wget http://dl.google.com/android/android-sdk_r21.1-linux.tgz
-  - tar xzf android-sdk_r21.1-linux.tgz
+  # changed install to -q instead of -qq to expose any missing packages
+  - if [ `uname -m` = x86_64 ]; then sudo apt-get install -q --force-yes libgd2-xpm ia32-libs ia32-libs-multiarch > /dev/null; fi
+  - wget http://dl.google.com/android/android-sdk_r22.6.2-linux.tgz
+  - tar xzf android-sdk_r22.6.2-linux.tgz
   - export ANDROID_HOME=$PWD/android-sdk-linux
   - export PATH=${PATH}:${ANDROID_HOME}/tools:${ANDROID_HOME}/platform-tools
 
@@ -22,10 +23,14 @@ before_install:
 
   # Install required components.
   # For a full list, run `android list sdk -a --extended`
-  # Note that sysimg-16 downloads the ARM, x86 and MIPS images (we should optimize this).
+  # Note that sysimg-19 downloads the ARM, x86 and MIPS images (we should optimize this).
   # Other relevant API's:
   #  addon-google_apis-google-16
-  - android update sdk --filter platform-tools,android-16,extra-android-support,$ANDROID_SDKS --no-ui --force > /dev/null
+  # removed > /dev/null to prevent Travis timing out and ease debugging
+  - echo y | android update sdk --filter tools,platform-tools --no-ui --force --all
+  - echo y | android update sdk --filter build-tools-19.0.3 --no-ui --force --all
+  - echo y | android update sdk --filter $ANDROID_TARGET --no-ui --force --all
+  - echo y | android update sdk --filter $ANDROID_SDKS --no-ui --force --all
 
   # Create and start emulator
   - echo no | android create avd --force -n test -t $ANDROID_TARGET --abi $ANDROID_ABI
@@ -34,7 +39,7 @@ before_install:
 before_script:
   - ./wait_for_emulator
 
-script: mvn install -Dandroid.device=test
+script: mvn clean install -Dandroid.device=test
 
 after_script:
   # Install Android NDK
@@ -47,4 +52,4 @@ after_script:
   # Run the samples.
   - mkdir target
   - git clone git://github.com/jayway/maven-android-plugin-samples.git target/maven-android-plugin-samples
-  - mvn install -B -f target/maven-android-plugin-samples/pom.xml -Dandroid.device=test
+  - mvn android:undeploy clean install -B -f target/maven-android-plugin-samples/pom.xml -Dandroid.device=test

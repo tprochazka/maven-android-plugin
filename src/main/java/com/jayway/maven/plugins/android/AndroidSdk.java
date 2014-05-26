@@ -37,7 +37,11 @@ import java.util.Properties;
  */
 public class AndroidSdk
 {
-
+    /**
+     * the default API level for the SDK used as a fall back if none is supplied, 
+     * should ideally point to the latest available version
+     */
+    private static final String DEFAULT_ANDROID_API_LEVEL = "19";
     /**
      * property file in each platform folder with details about platform.
      */
@@ -61,7 +65,7 @@ public class AndroidSdk
     private File platformToolsPath;
     private File toolsPath;
 
-    private IAndroidTarget androidTarget;
+    private final IAndroidTarget androidTarget;
     private SdkManager sdkManager;
     private int sdkMajorVersion;
 
@@ -84,16 +88,13 @@ public class AndroidSdk
 
         if ( apiLevel == null )
         {
-            throw new InvalidConfigurationException( " No Android API Level has been configured. " 
-                    + " Add e.g. <sdk><platform>17</platform></sdk> to the plugin configuration." );
+            apiLevel = DEFAULT_ANDROID_API_LEVEL;
         }
-        else
+
+        androidTarget = findPlatformByApiLevel( apiLevel );
+        if ( androidTarget == null )
         {
-            androidTarget = findPlatformByApiLevel( apiLevel );
-            if ( androidTarget == null )
-            {
-                throw invalidSdkException( sdkPath, apiLevel );
-            }
+            throw invalidSdkException( sdkPath, apiLevel );
         }
     }
 
@@ -295,7 +296,12 @@ public class AndroidSdk
      */
     public File getAndroidJar() throws MojoExecutionException
     {
-        return new File( androidTarget.getPath( IAndroidTarget.ANDROID_JAR ) );
+        final String androidJarPath = androidTarget.getPath( IAndroidTarget.ANDROID_JAR );
+        if ( androidJarPath == null )
+        {
+            throw new MojoExecutionException( "No AndroidJar found for " + androidTarget );
+        }
+        return new File ( androidJarPath );
     }
   
     /**

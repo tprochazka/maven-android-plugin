@@ -25,6 +25,7 @@ import com.jayway.maven.plugins.android.AndroidNdk;
 import com.jayway.maven.plugins.android.AndroidSigner;
 import com.jayway.maven.plugins.android.CommandExecutor;
 import com.jayway.maven.plugins.android.ExecutionException;
+import com.jayway.maven.plugins.android.common.AaptCommandBuilder;
 import com.jayway.maven.plugins.android.common.NativeHelper;
 import com.jayway.maven.plugins.android.config.ConfigHandler;
 import com.jayway.maven.plugins.android.config.ConfigPojo;
@@ -32,15 +33,12 @@ import com.jayway.maven.plugins.android.config.PullParameter;
 import com.jayway.maven.plugins.android.configuration.Apk;
 import com.jayway.maven.plugins.android.configuration.MetaInf;
 import com.jayway.maven.plugins.android.configuration.Sign;
-
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.filefilter.DirectoryFileFilter;
 import org.apache.commons.io.filefilter.FileFileFilter;
 import org.apache.commons.io.filefilter.FileFilterUtils;
 import org.apache.commons.io.filefilter.IOFileFilter;
-import org.apache.commons.lang.StringUtils;
 import org.apache.maven.artifact.Artifact;
-import org.apache.maven.artifact.factory.ArtifactFactory;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.codehaus.plexus.util.AbstractScanner;
@@ -66,8 +64,8 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
 
-import static com.jayway.maven.plugins.android.common.AndroidExtension.APK;
 import static com.jayway.maven.plugins.android.common.AndroidExtension.AAR;
+import static com.jayway.maven.plugins.android.common.AndroidExtension.APK;
 import static com.jayway.maven.plugins.android.common.AndroidExtension.APKLIB;
 
 
@@ -112,7 +110,7 @@ public class ApkMojo extends AbstractAndroidMojo
      * <code>&lt;sign&gt;</code> configuration tag.</p>
      * <p>Corresponds to {@link com.jayway.maven.plugins.android.configuration.Sign#debug}.</p>
      *
-     * @parameter expression="${android.sign.debug}" default-value="auto"
+     * @parameter property="android.sign.debug" default-value="auto"
      * @readonly
      */
     private String signDebug;
@@ -122,7 +120,7 @@ public class ApkMojo extends AbstractAndroidMojo
      * This value will be passed on to the aapt parameter --rename-instrumentation-target-package.
      * Look to aapt for more help on this. </p>
      *
-     * @parameter expression="${android.renameInstrumentationTargetPackage}"
+     * @parameter property="android.renameInstrumentationTargetPackage"
      *
      * TODO pass this into AaptExecutor
      */
@@ -134,7 +132,7 @@ public class ApkMojo extends AbstractAndroidMojo
      * Android does not support duplicates, and all dependencies are inlined in the APK. If duplicates files are found,
      * the resource is kept in the first dependency and removes from others.
      *
-     * @parameter expression="${android.extractDuplicates}" default-value="false"
+     * @parameter property="android.extractDuplicates" default-value="false"
      */
     private boolean extractDuplicates;
 
@@ -169,16 +167,9 @@ public class ApkMojo extends AbstractAndroidMojo
      * &lt;/configuration&gt;
      * </pre>
      *
-     * @parameter expression="${android.sourceDirectories}" default-value=""
+     * @parameter property="android.sourceDirectories" default-value=""
      */
     private File[] sourceDirectories;
-
-    /**
-     * @component
-     * @readonly
-     * @required
-     */
-    protected ArtifactFactory artifactFactory;
 
     /**
      * Pattern for additional META-INF resources to be packaged into the apk.
@@ -208,7 +199,7 @@ public class ApkMojo extends AbstractAndroidMojo
      * See also <a href="http://code.google.com/p/maven-android-plugin/issues/detail?id=97">Issue 97</a>
      * </p>
      *
-     * @parameter expression="${android.apk.metaIncludes}"
+     * @parameter property="android.apk.metaIncludes"
      * @deprecated in favour of apk.metaInf
      */
     @PullParameter
@@ -225,13 +216,13 @@ public class ApkMojo extends AbstractAndroidMojo
     /**
      * Defines whether or not the APK is being produced in debug mode or not.
      *
-     * @parameter expression="${android.apk.debug}"
+     * @parameter property="android.apk.debug"
      */
     @PullParameter( defaultValue = "false" )
     private Boolean apkDebug;
 
     /**
-     * @parameter expression="${android.nativeToolchain}"
+     * @parameter property="android.nativeToolchain"
      */
     @PullParameter( defaultValue = "arm-linux-androideabi-4.4.3" )
     private String apkNativeToolchain;
@@ -239,7 +230,7 @@ public class ApkMojo extends AbstractAndroidMojo
     /**
      * Specifies the final name of the library output by the build (this allows
      *
-     * @parameter expression="${android.ndk.build.build.final-library.name}"
+     * @parameter property="android.ndk.build.build.final-library.name"
      */
     private String ndkFinalLibraryName;
 
@@ -270,7 +261,7 @@ public class ApkMojo extends AbstractAndroidMojo
      * without a classifier.</p>
      * <p>Valid values currently include {@code armeabi}, {@code armeabi-v7a}, {@code mips} and {@code x86}.</p>
      *
-     * @parameter expression="${android.nativeLibrariesDependenciesHardwareArchitectureDefault}" default-value="armeabi"
+     * @parameter property="android.nativeLibrariesDependenciesHardwareArchitectureDefault" default-value="armeabi"
      */
     private String nativeLibrariesDependenciesHardwareArchitectureDefault;
 
@@ -619,7 +610,9 @@ public class ApkMojo extends AbstractAndroidMojo
         } 
         catch ( DuplicateFileException e )
         {
-            throw new MojoExecutionException( e.getMessage() );
+            final String msg = String.format( "Duplicated file: %s, found in archive %s and %s",
+                    e.getArchivePath(), e.getFile1(), e.getFile2() );
+            throw new MojoExecutionException( msg, e );
         } 
         catch ( SealedApkException e )
         {
@@ -798,8 +791,7 @@ public class ApkMojo extends AbstractAndroidMojo
                         else if ( APKLIB.equals( resolvedArtifact.getType() )
                                 || AAR.equals( resolvedArtifact.getType() ) )
                         {
-                                addNativeDirectory( natives, new File( getLibraryUnpackDirectory( resolvedArtifact )
-                                                                           + "/libs" ) );
+                                addNativeDirectory( natives, getUnpackedLibNativesFolder( resolvedArtifact ) );
                         }
                     }
                 }
@@ -837,8 +829,7 @@ public class ApkMojo extends AbstractAndroidMojo
      */
     private Set<Artifact> getNativeLibraryArtifacts() throws MojoExecutionException
     {
-        return new NativeHelper( project, projectRepos, repoSession, repoSystem, artifactFactory, getLog() )
-                .getNativeDependenciesArtifacts( unpackedApkLibsDirectory, true );
+        return getNativeHelper().getNativeDependenciesArtifacts( this, getUnpackedLibsDirectory(), true );
     }
 
     /**
@@ -856,7 +847,8 @@ public class ApkMojo extends AbstractAndroidMojo
     private void copyNativeLibraryArtifactFileToDirectory( Artifact artifact, File destinationDirectory,
                                                            String ndkArchitecture ) throws MojoExecutionException
     {
-        final File artifactFile = artifact.getFile();
+
+        final File artifactFile = getArtifactResolverHelper().resolveArtifactToFile( artifact );
         try
         {
             final String artifactId = artifact.getArtifactId();
@@ -964,86 +956,40 @@ public class ApkMojo extends AbstractAndroidMojo
         File androidJar = getAndroidSdk().getAndroidJar();
         File outputFile = new File( project.getBuild().getDirectory(), project.getBuild().getFinalName() + ".ap_" );
 
-        List<String> commands = new ArrayList<String>();
-        commands.add( "package" );
-        commands.add( "-f" );
-        commands.add( "-M" );
-        commands.add( androidManifestFile.getAbsolutePath() );
-        for ( File resOverlayDir : overlayDirectories )
+        List<File> dependencyArtifactResDirectoryList = new ArrayList<File>();
+        for ( Artifact libraryArtifact : getTransitiveDependencyArtifacts( APKLIB, AAR ) )
         {
-            if ( resOverlayDir != null && resOverlayDir.exists() )
+            final File libraryResDir = getUnpackedLibResourceFolder( libraryArtifact );
+            if ( libraryResDir.exists() )
             {
-                commands.add( "-S" );
-                commands.add( resOverlayDir.getAbsolutePath() );
+                dependencyArtifactResDirectoryList.add( libraryResDir );
             }
         }
-        if ( resourceDirectory.exists() )
-        {
-            commands.add( "-S" );
-            commands.add( resourceDirectory.getAbsolutePath() );
-        }
-        for ( Artifact artifact : getAllRelevantDependencyArtifacts() )
-        {
-            if ( artifact.getType().equals( APKLIB ) || artifact.getType().equals( AAR ) )
-            {
-                final String apkLibResDir = getLibraryUnpackDirectory( artifact ) + "/res";
-                if ( new File( apkLibResDir ).exists() )
-                {
-                    commands.add( "-S" );
-                    commands.add( apkLibResDir );
-                }
-            }
-        }
-        commands.add( "--auto-add-overlay" );
 
-        // NB aapt only accepts a single assets parameter - combinedAssets is a merge of all assets
-        if ( combinedAssets.exists() )
-        {
-            getLog().debug( "Adding assets folder : " + combinedAssets );
-            commands.add( "-A" );
-            commands.add( combinedAssets.getAbsolutePath() );
-        }
+        AaptCommandBuilder commandBuilder = AaptCommandBuilder
+                .packageResources( getLog() )
+                .forceOverwriteExistingFiles()
+                .setPathToAndroidManifest( androidManifestFile )
+                .addResourceDirectoriesIfExists( overlayDirectories )
+                .addResourceDirectoryIfExists( resourceDirectory )
+                .addResourceDirectoriesIfExists( dependencyArtifactResDirectoryList )
+                .autoAddOverlay()
+                // NB aapt only accepts a single assets parameter - combinedAssets is a merge of all assets
+                .addRawAssetsDirectoryIfExists( combinedAssets )
+                .renameManifestPackage( renameManifestPackage )
+                .renameInstrumentationTargetPackage( renameInstrumentationTargetPackage )
+                .addExistingPackageToBaseIncludeSet( androidJar )
+                .setOutputApkFile( outputFile )
+                .addConfigurations( configurations )
+                .addExtraArguments( aaptExtraArgs )
+                .setVerbose( aaptVerbose )
+                .setDebugMode( !release );
 
-        if ( StringUtils.isNotBlank( renameManifestPackage ) )
-        {
-            commands.add( "--rename-manifest-package" );
-            commands.add( renameManifestPackage );
-        }
-
-        if ( StringUtils.isNotBlank( renameInstrumentationTargetPackage ) )
-        {
-            commands.add( "--rename-instrumentation-target-package" );
-            commands.add( renameInstrumentationTargetPackage );
-        }
-
-        commands.add( "-I" );
-        commands.add( androidJar.getAbsolutePath() );
-        commands.add( "-F" );
-        commands.add( outputFile.getAbsolutePath() );
-        if ( StringUtils.isNotBlank( configurations ) )
-        {
-            commands.add( "-c" );
-            commands.add( configurations );
-        }
-
-        for ( String aaptExtraArg : aaptExtraArgs )
-        {
-            commands.add( aaptExtraArg );
-        }
-
-        if ( !release )
-        {
-            getLog().info( "Enabling debug build for apk." );
-            commands.add( "--debug-mode" );
-        }
-        else 
-        {
-            getLog().info( "Enabling release build for apk." );
-        }
-
-        getLog().info( getAndroidSdk().getAaptPath() + " " + commands.toString() );
+        getLog().debug( getAndroidSdk().getAaptPath() + " " + commandBuilder.toString() );
         try
         {
+            executor.setCaptureStdOut( true );
+            List<String> commands = commandBuilder.build();
             executor.executeCommand( getAndroidSdk().getAaptPath(), commands, project.getBasedir(), false );
         }
         catch ( ExecutionException e )
@@ -1055,48 +1001,42 @@ public class ApkMojo extends AbstractAndroidMojo
     private void processApkLibAssets() throws MojoExecutionException
     {
         // Next pull APK Lib assets, reverse the order to give precedence to libs higher up the chain
-        List<Artifact> artifactList = new ArrayList<Artifact>( getAllRelevantDependencyArtifacts() );
+        List<Artifact> artifactList = new ArrayList<Artifact>( getTransitiveDependencyArtifacts( APKLIB, AAR ) );
         for ( Artifact artifact : artifactList )
         {
-            if ( artifact.getType().equals( APKLIB ) || artifact.getType().equals( AAR ) )
+            final File apklibAsssetsDirectory = getUnpackedLibAssetsFolder( artifact );
+            if ( apklibAsssetsDirectory.exists() )
             {
-                File apklibAsssetsDirectory = new File( getLibraryUnpackDirectory( artifact ) + "/assets" );
-                if ( apklibAsssetsDirectory.exists() )
+                try
                 {
-                    try
-                    {
-                        getLog().info( "Copying dependency assets files to combined assets directory." );
-                        org.apache.commons.io.FileUtils
-                                .copyDirectory( apklibAsssetsDirectory, combinedAssets, new FileFilter()
+                    getLog().info( "Copying dependency assets files to combined assets directory." );
+                    org.apache.commons.io.FileUtils
+                            .copyDirectory( apklibAsssetsDirectory, combinedAssets, new FileFilter() {
+                                /**
+                                 * Excludes files matching one of the common file to exclude.
+                                 * The default excludes pattern are the ones from
+                                 * {org.codehaus.plexus.util.AbstractScanner#DEFAULTEXCLUDES}
+                                 * @see java.io.FileFilter#accept(java.io.File)
+                                 */
+                                public boolean accept( File file )
                                 {
-                                    /**
-                                     * Excludes files matching one of the common file to exclude.
-                                     * The default excludes pattern are the ones from
-                                     * {org.codehaus.plexus.util.AbstractScanner#DEFAULTEXCLUDES}
-                                     * @see java.io.FileFilter#accept(java.io.File)
-                                     */
-                                    public boolean accept( File file )
+                                    for ( String pattern : AbstractScanner.DEFAULTEXCLUDES )
                                     {
-                                        for ( String pattern : AbstractScanner.DEFAULTEXCLUDES )
+                                        if ( AbstractScanner.match( pattern, file.getAbsolutePath() ) )
                                         {
-                                            if ( AbstractScanner.match( pattern, file.getAbsolutePath() ) )
-                                            {
-                                                getLog().debug( "Excluding " + file.getName() + " from asset copy : "
-                                                        + "matching " + pattern );
-                                                return false;
-                                            }
+                                            getLog().debug( "Excluding " + file.getName() + " from asset copy : "
+                                                    + "matching " + pattern );
+                                            return false;
                                         }
-
-                                        return true;
-
                                     }
-                                } );
-                    }
-                    catch ( IOException e )
-                    {
-                        throw new MojoExecutionException( "", e );
-                    }
 
+                                    return true;
+                                }
+                            } );
+                }
+                catch ( IOException e )
+                {
+                    throw new MojoExecutionException( "", e );
                 }
             }
         }

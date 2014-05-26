@@ -9,8 +9,6 @@ import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.BooleanUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.math.NumberUtils;
-import org.apache.maven.artifact.versioning.ArtifactVersion;
-import org.apache.maven.artifact.versioning.DefaultArtifactVersion;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.w3c.dom.Attr;
@@ -32,8 +30,9 @@ import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
 import java.io.File;
-import java.io.FileWriter;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStreamWriter;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -93,9 +92,8 @@ public class ManifestUpdateMojo extends AbstractAndroidMojo
     private static final String ELEM_USES_SDK = "uses-sdk";
 
     // version encoding 
-    private static final int INCREMENTAL_VERSION_POSITION = 1;
-    private static final int MINOR_VERSION_POSITION = 1000;
-    private static final int MAJOR_VERSION_POSITION = 1000000;
+    private static final int NUMBER_OF_DIGITS_FOR_VERSION_POSITION = 3;
+    
 
     /**
      * Configuration for the manifest-update goal.
@@ -172,7 +170,7 @@ public class ManifestUpdateMojo extends AbstractAndroidMojo
      * will use the version number of the project. Exposed via the project property
      * <code>android.manifest.versionName</code>.
      *
-     * @parameter expression="${android.manifest.versionName}" default-value="${project.version}"
+     * @parameter property="android.manifest.versionName" default-value="${project.version}"
      */
     protected String manifestVersionName;
 
@@ -180,7 +178,7 @@ public class ManifestUpdateMojo extends AbstractAndroidMojo
      * Update the <code>android:versionCode</code> attribute with the specified parameter. Exposed via
      * the project property <code>android.manifest.versionCode</code>.
      *
-     * @parameter expression="${android.manifest.versionCode}"
+     * @parameter property="android.manifest.versionCode"
      */
     protected Integer manifestVersionCode;
 
@@ -189,7 +187,7 @@ public class ManifestUpdateMojo extends AbstractAndroidMojo
      * exposed via the project property <code>android.manifest.versionCodeAutoIncrement</code> and
      * the resulting value as <code>android.manifest.versionCode</code>.
      *
-     * @parameter expression="${android.manifest.versionCodeAutoIncrement}" default-value="false"
+     * @parameter property="android.manifest.versionCodeAutoIncrement" default-value="false"
      */
     private Boolean manifestVersionCodeAutoIncrement = false;
 
@@ -197,7 +195,7 @@ public class ManifestUpdateMojo extends AbstractAndroidMojo
      * Update the <code>android:icon</code> attribute with the specified parameter. Exposed via
      * the project property <code>android.manifest.appIcon</code>.
      * 
-     * @parameter expression="${android.manifest.applicationIcon}" 
+     * @parameter property="android.manifest.applicationIcon" 
      */
     private String manifestApplicationIcon;
 
@@ -205,7 +203,7 @@ public class ManifestUpdateMojo extends AbstractAndroidMojo
      * Update the <code>android:label</code> attribute with the specified parameter. Exposed via
      * the project property <code>android.manifest.appLabel</code>.
      * 
-     * @parameter expression="${android.manifest.applicationLabel}" 
+     * @parameter property="android.manifest.applicationLabel" 
      */
     private String manifestApplicationLabel;    
 
@@ -213,7 +211,7 @@ public class ManifestUpdateMojo extends AbstractAndroidMojo
      * Update the <code>android:theme</code> attribute with the specified parameter. Exposed via
      * the project property <code>android.manifest.applicationTheme</code>.
      * 
-     * @parameter expression="${android.manifest.applicationTheme}" 
+     * @parameter property="android.manifest.applicationTheme" 
      */
     private String manifestApplicationTheme;    
     
@@ -229,7 +227,7 @@ public class ManifestUpdateMojo extends AbstractAndroidMojo
      * the version major should be no larger than 2000.  Any other suffixes do not
      * participate in the version code generation.
      *
-     * @parameter expression="${android.manifest.versionCodeUpdateFromVersion}" default-value="false"
+     * @parameter property="android.manifest.versionCodeUpdateFromVersion" default-value="false"
      */
     protected Boolean manifestVersionCodeUpdateFromVersion = false;
 
@@ -237,7 +235,7 @@ public class ManifestUpdateMojo extends AbstractAndroidMojo
      * Update the <code>android:sharedUserId</code> attribute with the specified parameter. If
      * specified, exposes the project property <code>android.manifest.sharedUserId</code>.
      *
-     * @parameter expression="${android.manifest.sharedUserId}"
+     * @parameter property="android.manifest.sharedUserId"
      */
     protected String manifestSharedUserId;
 
@@ -245,7 +243,7 @@ public class ManifestUpdateMojo extends AbstractAndroidMojo
      * Update the <code>android:debuggable</code> attribute with the specified parameter. Exposed via
      * the project property <code>android.manifest.debuggable</code>.
      *
-     * @parameter expression="${android.manifest.debuggable}"
+     * @parameter property="android.manifest.debuggable"
      */
     protected Boolean manifestDebuggable;
 
@@ -253,7 +251,7 @@ public class ManifestUpdateMojo extends AbstractAndroidMojo
      * For a given provider (named by <code>android:name</code> update the <code>android:authorities</code>
      * attribute for the provider. Exposed via the project property <code>android.manifest.providerAuthorities</code>.
      *
-     * @parameter expression="${android.manifest.providerAuthorities}"
+     * @parameter property="android.manifest.providerAuthorities"
      */
     protected Properties manifestProviderAuthorities;
 
@@ -290,7 +288,7 @@ public class ManifestUpdateMojo extends AbstractAndroidMojo
     /**
      * The modified <code>AndroidManifest.xml</code> file.
      *
-     * @parameter expression="${android.manifestFile}" default-value="${project.basedir}/AndroidManifest.xml"
+     * @parameter property="android.manifestFile" default-value="${project.basedir}/AndroidManifest.xml"
      */
     protected File updatedManifestFile;
 
@@ -511,12 +509,13 @@ public class ManifestUpdateMojo extends AbstractAndroidMojo
         xformer.setOutputProperty( OutputKeys.OMIT_XML_DECLARATION, "yes" );
         Source source = new DOMSource( doc );
 
-        FileWriter writer = null;
+        OutputStreamWriter writer = null;
         try
         {
             manifestFile.getParentFile().mkdirs();
 
-            writer = new FileWriter( manifestFile, false );
+            String encoding = doc.getXmlEncoding() != null ? doc.getXmlEncoding() : "UTF-8";
+            writer = new OutputStreamWriter( new FileOutputStream( manifestFile, false ), encoding );
             if ( doc.getXmlEncoding() != null && doc.getXmlVersion() != null )
             {
                 String xmldecl = String
@@ -790,37 +789,24 @@ public class ManifestUpdateMojo extends AbstractAndroidMojo
     {
         String verString = project.getVersion();
         getLog().debug( "Generating versionCode for " + verString );
-        ArtifactVersion artifactVersion = new DefaultArtifactVersion( verString );
-        String verCode;
-        if ( artifactVersion.getMajorVersion() < 1 && artifactVersion.getMinorVersion() < 1
-             && artifactVersion.getIncrementalVersion() < 1 )
-        {
-            getLog().warn( "Problem parsing version number occurred. Using fall back to determine version code. " );
-
-            verCode = verString.replaceAll( "\\D", "" );
-
-            Attr versionCodeAttr = manifestElement.getAttributeNode( ATTR_VERSION_CODE );
-            int currentVersionCode = 0;
-            if ( versionCodeAttr != null )
-            {
-                currentVersionCode = NumberUtils.toInt( versionCodeAttr.getValue(), 0 );
-            }
-
-            if ( Integer.parseInt( verCode ) < currentVersionCode )
-            {
-                getLog().info( verCode + " < " + currentVersionCode + " so padding versionCode" );
-                verCode = StringUtils.rightPad( verCode, versionCodeAttr.getValue().length(), "0" );
-            }
-        }
-        else
-        {
-            verCode = Integer.toString( artifactVersion.getMajorVersion() * MAJOR_VERSION_POSITION
-                    + artifactVersion.getMinorVersion() * MINOR_VERSION_POSITION
-                    + artifactVersion.getIncrementalVersion() * INCREMENTAL_VERSION_POSITION );
-        }
+        String verCode = generateVersionCodeFromVersionName( verString );
         getLog().info( "Setting " + ATTR_VERSION_CODE + " to " + verCode );
         manifestElement.setAttribute( ATTR_VERSION_CODE, verCode );
         project.getProperties().setProperty( "android.manifest.versionCode", String.valueOf( verCode ) );
+    }
+
+    private String generateVersionCodeFromVersionName( String versionName ) 
+    {
+      String[] versionNameDigits = versionName.replaceAll( "[^0-9.]", "" ).split( "\\." );
+      
+      long versionCode = 0;
+      for ( int i = 0; i < versionNameDigits.length; i++ ) 
+      {
+        double digitMultiplayer = Math.pow( 10, i * NUMBER_OF_DIGITS_FOR_VERSION_POSITION );
+        String versionDigit = versionNameDigits[versionNameDigits.length - i - 1 ];
+        versionCode += Integer.valueOf( versionDigit ).intValue() * digitMultiplayer;
+      }
+      return String.valueOf( versionCode );
     }
 
     private boolean performSupportScreenModification( Document doc, Element manifestElement )

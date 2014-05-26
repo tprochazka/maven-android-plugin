@@ -13,7 +13,7 @@ import org.apache.maven.plugin.logging.Log;
 import java.io.File;
 import java.io.IOException;
 import java.util.Collection;
-import java.util.List;
+import java.util.Set;
 
 /**
  * Generates R classes containing appropriate resource values for dependent libraries.
@@ -23,31 +23,29 @@ import java.util.List;
 final class ResourceClassGenerator
 {
     private final GenerateSourcesMojo mojo;
-    private final List<Artifact> libraries;
     private final File targetDirectory;
     private final File genDirectory;
     private final Log log;
     private final ILogger androidUtilsLog;
 
-    public ResourceClassGenerator( GenerateSourcesMojo mojo, List<Artifact> libraries, File targetDirectory,
-                                   File genDirectory, Log log )
+    public ResourceClassGenerator( GenerateSourcesMojo mojo, File targetDirectory,
+                                   File genDirectory )
     {
         this.mojo = mojo;
-        this.libraries = libraries;
         this.targetDirectory = targetDirectory;
         this.genDirectory = genDirectory;
-        this.log = log;
+        this.log = mojo.getLog();
         this.androidUtilsLog = new MavenILogger( log );
     }
 
-    public void generateLibraryRs() throws MojoExecutionException
+    public void generateLibraryRs( Set<Artifact> libraries, String libraryType ) throws MojoExecutionException
     {
         // list of all the symbol loaders per package names.
         final Multimap<String, SymbolLoader> libMap = ArrayListMultimap.create();
 
         for ( final Artifact lib : libraries )
         {
-            final File unpackedLibDirectory = new File( mojo.getLibraryUnpackDirectory( lib ) );
+            final File unpackedLibDirectory = mojo.getUnpackedLibFolder( lib );
             final File rFile = new File( unpackedLibDirectory, "R.txt" );
 
             if ( rFile.isFile() )
@@ -74,7 +72,7 @@ final class ResourceClassGenerator
         // now loop on all the package name, merge all the symbols to write, and write them
         for ( final String packageName : libMap.keySet() )
         {
-            log.debug( "Writing R for " + packageName );
+            log.info( "Generating R file for " + libraryType + " : " + packageName );
             final Collection<SymbolLoader> symbols = libMap.get( packageName );
 
             final SymbolWriter writer = new SymbolWriter(

@@ -4,34 +4,27 @@ import com.google.common.io.PatternFilenameFilter;
 import com.jayway.maven.plugins.android.AbstractAndroidMojo;
 import com.jayway.maven.plugins.android.AndroidNdk;
 import com.jayway.maven.plugins.android.phase09package.ApklibMojo;
-
 import org.apache.commons.io.FileUtils;
 import org.apache.maven.artifact.Artifact;
-import org.apache.maven.artifact.factory.ArtifactFactory;
-import org.apache.maven.artifact.versioning.VersionRange;
+import org.apache.maven.artifact.resolver.filter.AndArtifactFilter;
+import org.apache.maven.artifact.resolver.filter.ArtifactFilter;
+import org.apache.maven.artifact.resolver.filter.ExcludesArtifactFilter;
+import org.apache.maven.artifact.resolver.filter.OrArtifactFilter;
+import org.apache.maven.artifact.resolver.filter.ScopeArtifactFilter;
+import org.apache.maven.model.Dependency;
+import org.apache.maven.model.Exclusion;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.project.MavenProject;
-import org.eclipse.aether.RepositorySystem;
-import org.eclipse.aether.RepositorySystemSession;
-import org.eclipse.aether.collection.CollectRequest;
-import org.eclipse.aether.graph.Dependency;
-import org.eclipse.aether.graph.DependencyFilter;
-import org.eclipse.aether.graph.DependencyNode;
-import org.eclipse.aether.graph.Exclusion;
-import org.eclipse.aether.repository.RemoteRepository;
-import org.eclipse.aether.resolution.DependencyRequest;
-import org.eclipse.aether.util.filter.AndDependencyFilter;
-import org.eclipse.aether.util.filter.ExclusionsDependencyFilter;
-import org.eclipse.aether.util.filter.ScopeDependencyFilter;
-import org.eclipse.aether.util.graph.visitor.PreorderNodeListGenerator;
+import org.apache.maven.shared.dependency.graph.DependencyGraphBuilder;
+import org.apache.maven.shared.dependency.graph.DependencyNode;
+import org.apache.maven.shared.dependency.graph.traversal.CollectingDependencyNodeVisitor;
 
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FilenameFilter;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Scanner;
@@ -40,7 +33,6 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static com.jayway.maven.plugins.android.common.AndroidExtension.APKLIB;
-import static org.apache.maven.RepositoryUtils.toDependency;
 
 /**
  * @author Johan Lindquist
@@ -51,20 +43,13 @@ public class NativeHelper
     public static final int NDK_REQUIRED_VERSION = 7;
 
     private MavenProject project;
-    private RepositorySystemSession repoSession;
-    private RepositorySystem repoSystem;
-    private ArtifactFactory artifactFactory;
+    private DependencyGraphBuilder dependencyGraphBuilder;
     private Log log;
-    private List<RemoteRepository> projectRepos;
 
-    public NativeHelper( MavenProject project, List<RemoteRepository> projectRepos, RepositorySystemSession repoSession,
-                         RepositorySystem repoSystem, ArtifactFactory artifactFactory, Log log )
+    public NativeHelper( MavenProject project, DependencyGraphBuilder dependencyGraphBuilder, Log log )
     {
         this.project = project;
-        this.projectRepos = projectRepos;
-        this.repoSession = repoSession;
-        this.repoSystem = repoSystem;
-        this.artifactFactory = artifactFactory;
+        this.dependencyGraphBuilder = dependencyGraphBuilder;
         this.log = log;
     }
 
@@ -74,7 +59,7 @@ public class NativeHelper
     {
         for ( Artifact resolveNativeLibraryArtifact : resolveNativeLibraryArtifacts )
         {
-            if ( "a".equals( resolveNativeLibraryArtifact.getType() ) )
+            if ( Const.ArtifactType.NATIVE_IMPLEMENTATION_ARCHIVE.equals( resolveNativeLibraryArtifact.getType() ) )
             {
                 return true;
             }
@@ -97,7 +82,7 @@ public class NativeHelper
     {
         for ( Artifact resolveNativeLibraryArtifact : resolveNativeLibraryArtifacts )
         {
-            if ( "so".equals( resolveNativeLibraryArtifact.getType() ) )
+            if ( Const.ArtifactType.NATIVE_SYMBOL_OBJECT.equals( resolveNativeLibraryArtifact.getType() ) )
             {
                 return true;
             }
@@ -118,9 +103,8 @@ public class NativeHelper
                                           final String ndkArchitecture, final boolean staticLibrary )
     {
         File libsFolder = new File(
-                AbstractAndroidMojo
-                    .getLibraryUnpackDirectory( unpackDirectory, a ), 
-                File.separator + ApklibMojo.NATIVE_LIBRARIES_FOLDER + File.separator + ndkArchitecture );
+                AbstractAndroidMojo.getLibraryUnpackDirectory( unpackDirectory, a ),
+                ApklibMojo.NATIVE_LIBRARIES_FOLDER + File.separator + ndkArchitecture );
         if ( libsFolder.exists() )
         {
             File[] libFiles = libsFolder.listFiles( new FilenameFilter()
@@ -135,9 +119,11 @@ public class NativeHelper
         return null;
     }
     
-    public Set<Artifact> getNativeDependenciesArtifacts( File unpackDirectory, boolean sharedLibraries )
+    public Set<Artifact> getNativeDependenciesArtifacts(
+            AbstractAndroidMojo mojo, File unpackDirectory, boolean sharedLibraries )
             throws MojoExecutionException
     {
+        log.debug( "Finding native dependencies. UnpackFolder=" + unpackDirectory + " shared=" + sharedLibraries );
         final Set<Artifact> filteredArtifacts = new LinkedHashSet<Artifact>();
         final Set<Artifact> allArtifacts = new LinkedHashSet<Artifact>();
         
@@ -149,15 +135,19 @@ public class NativeHelper
         // Add all attached artifacts as well - this could come from the NDK mojo for example
         allArtifacts.addAll( project.getAttachedArtifacts() );
 
+        // Add all transitive artifacts as well
+        // this allows armeabi classifier -> apklib -> apklib -> apk chaining to only include armeabi in APK
+        allArtifacts.addAll( project.getArtifacts() );
+
         for ( Artifact artifact : allArtifacts )
         {
+            log.debug( "Checking artifact : " + artifact );
             // A null value in the scope indicates that the artifact has been attached
             // as part of a previous build step (NDK mojo)
             if ( isNativeLibrary( sharedLibraries, artifact.getType() ) && artifact.getScope() == null )
             {
                 // Including attached artifact
-                log.debug( "Including attached artifact: " + artifact.getArtifactId() 
-                        + "(" + artifact.getGroupId() + "). Artifact scope is not set." );
+                log.debug( "Including attached artifact: " + artifact + ". Artifact scope is not set." );
                 filteredArtifacts.add( artifact );
             }
             else
@@ -166,119 +156,133 @@ public class NativeHelper
                         Artifact.SCOPE_COMPILE.equals( artifact.getScope() ) || Artifact.SCOPE_RUNTIME
                                 .equals( artifact.getScope() ) ) )
                 {
-                    log.debug( "Including attached artifact: " + artifact.getArtifactId() 
-                            + "(" + artifact.getGroupId() + "). Artifact scope is Compile or Runtime." );
+                    log.debug( "Including attached artifact: " + artifact + ". Artifact scope is Compile or Runtime." );
                     filteredArtifacts.add( artifact );
                 }
                 else
                 {
-                    if ( APKLIB.equals( artifact.getType() ) )
+                    final String type = artifact.getType();
+
+                    if ( APKLIB.equals( type ) )
                     {
                         // Check if the artifact contains a libs folder - if so, include it in the list
-                        File libsFolder = new File(
-                                AbstractAndroidMojo.getLibraryUnpackDirectory( unpackDirectory, artifact ) + "/libs" );
-                        // make sure we ignore libs folders that only contain JARs
-                        if ( libsFolder.exists()
-                                && libsFolder.list( new PatternFilenameFilter( ".+[^.jar]$" ) ).length > 0 )
+                        File libsFolder = null;
+                        if ( mojo != null )
                         {
-                            log.debug( "Including attached artifact: " + artifact.getArtifactId() 
-                                    + "(" + artifact.getGroupId() + "). Artifact is APKLIB." );
+                            libsFolder = mojo.getUnpackedLibNativesFolder( artifact );
+                        }
+                        else
+                        {
+                            // This is used from NativeHelperTest since we have no AbstractAndroidMojo there
+                            libsFolder = new File(
+                                AbstractAndroidMojo.getLibraryUnpackDirectory( unpackDirectory, artifact ), "libs" );
+                        }
+
+                        if ( !libsFolder.exists() )
+                        {
+                            log.debug( "Skipping " + libsFolder.getAbsolutePath() + " for native artifacts" );
+                            continue;
+                        }
+
+                        if ( !libsFolder.isDirectory() )
+                        {
+                            continue;
+                        }
+
+                        log.debug( "Checking " + libsFolder.getAbsolutePath() + " for native artifacts" );
+                        // make sure we ignore libs folders that only contain JARs
+                        // The regular expression filters out all file paths ending with '.jar' or '.JAR',
+                        // so all native libs remain
+                        if ( libsFolder.list( new PatternFilenameFilter( "^.*(?<!(?i)\\.jar)$" ) ).length > 0 )
+                        {
+                            log.debug( "Including attached artifact: " + artifact + ". Artifact is APKLIB." );
                             filteredArtifacts.add( artifact );
                         }
+                    }
+                    else if ( ! "jar".equals( type ) )
+                    {
+                        log.debug( "Not checking " + type + " for native artifacts" );
                     }
                 }
             }
         }
 
-        Set<Artifact> transientArtifacts = processTransientDependencies( project.getDependencies(), sharedLibraries );
+        Set<Artifact> transitiveArtifacts = processTransitiveDependencies( project.getDependencies(), sharedLibraries );
 
-        filteredArtifacts.addAll( transientArtifacts );
+        filteredArtifacts.addAll( transitiveArtifacts );
 
         return filteredArtifacts;
     }
 
     private boolean isNativeLibrary( boolean sharedLibraries, String artifactType )
     {
-        return ( sharedLibraries ? "so".equals( artifactType ) : "a".equals( artifactType ) );
+        return ( sharedLibraries
+                ? Const.ArtifactType.NATIVE_SYMBOL_OBJECT.equals( artifactType )
+                : Const.ArtifactType.NATIVE_IMPLEMENTATION_ARCHIVE.equals( artifactType )
+        );
     }
 
-    private Set<Artifact> processTransientDependencies( List<org.apache.maven.model.Dependency> dependencies,
-                                                        boolean sharedLibraries ) throws MojoExecutionException
+    private Set<Artifact> processTransitiveDependencies( List<Dependency> dependencies, boolean sharedLibraries )
+            throws MojoExecutionException
     {
-
-        Set<Artifact> transientArtifacts = new LinkedHashSet<Artifact>();
-        for ( org.apache.maven.model.Dependency dependency : dependencies )
+        final Set<Artifact> transitiveArtifacts = new LinkedHashSet<Artifact>();
+        for ( Dependency dependency : dependencies )
         {
-            if ( ! "provided".equals( dependency.getScope() ) && ! dependency.isOptional() )
+            if ( ! Artifact.SCOPE_PROVIDED.equals( dependency.getScope() ) && ! dependency.isOptional() )
             {
-                transientArtifacts.addAll(
-                        processTransientDependencies( toDependency( dependency, repoSession.getArtifactTypeRegistry() ),
-                                sharedLibraries ) );
+                transitiveArtifacts.addAll( processTransitiveDependencies( dependency, sharedLibraries ) );
             }
         }
 
-        return transientArtifacts;
+        return transitiveArtifacts;
 
     }
 
-    private Set<Artifact> processTransientDependencies( Dependency dependency, boolean sharedLibraries )
+    private Set<Artifact> processTransitiveDependencies( Dependency dependency, boolean sharedLibraries )
             throws MojoExecutionException
     {
+        log.debug( "Processing transitive dependencies for : " + dependency );
+
         try
         {
             final Set<Artifact> artifacts = new LinkedHashSet<Artifact>();
 
-            final CollectRequest collectRequest = new CollectRequest();
-
-            collectRequest.setRoot( dependency );
-            collectRequest.setRepositories( projectRepos );
-            final DependencyNode node = repoSystem.collectDependencies( repoSession, collectRequest ).getRoot();
-
-            Collection<String> exclusionPatterns = new ArrayList<String>();
+            final List<String> exclusionPatterns = new ArrayList<String>();
             if ( dependency.getExclusions() != null && ! dependency.getExclusions().isEmpty() )
             {
-                for ( Exclusion exclusion : dependency.getExclusions() )
+                for ( final Exclusion exclusion : dependency.getExclusions() )
                 {
                     exclusionPatterns.add( exclusion.getGroupId() + ":" + exclusion.getArtifactId() );
                 }
             }
-
-            final DependencyRequest dependencyRequest = new DependencyRequest( node,
-                    new AndDependencyFilter( new ExclusionsDependencyFilter( exclusionPatterns ),
-                            new AndDependencyFilter( new ScopeDependencyFilter( Arrays.asList( "compile", "runtime" ),
-                                    Arrays.asList( "test" ) ),
-                                    // Also exclude any optional dependencies
-                                    new DependencyFilter()
-                                    {
-                                        @Override
-                                        public boolean accept( DependencyNode dependencyNode,
-                                                               List<DependencyNode> dependencyNodes )
-                                        {
-                                            return ! dependencyNode.getDependency().isOptional();
-                                        }
-                                    } ) ) );
-
-
-            repoSystem.resolveDependencies( repoSession, dependencyRequest );
-
-            PreorderNodeListGenerator nlg = new PreorderNodeListGenerator();
-            node.accept( nlg );
-
-            final List<Dependency> dependencies = nlg.getDependencies( false );
-
-            for ( Dependency dep : dependencies )
+            final ArtifactFilter optionalFilter = new ArtifactFilter()
             {
-                final org.eclipse.aether.artifact.Artifact depAetherArtifact = dep.getArtifact();
-                if ( isNativeLibrary( sharedLibraries, depAetherArtifact.getExtension() ) )
+                @Override
+                public boolean include( Artifact artifact )
                 {
-                    final Artifact mavenArtifact = artifactFactory
-                            .createDependencyArtifact( depAetherArtifact.getGroupId(),
-                                    depAetherArtifact.getArtifactId(),
-                                    VersionRange.createFromVersion( depAetherArtifact.getVersion() ),
-                                    depAetherArtifact.getExtension(), depAetherArtifact.getClassifier(),
-                                    dep.getScope() );
-                    mavenArtifact.setFile( depAetherArtifact.getFile() );
-                    artifacts.add( mavenArtifact );
+                    return !artifact.isOptional();
+                }
+            };
+
+            final AndArtifactFilter filter = new AndArtifactFilter();
+            filter.add( new ExcludesArtifactFilter( exclusionPatterns ) );
+            filter.add( new OrArtifactFilter( Arrays.<ArtifactFilter>asList( new ScopeArtifactFilter( "compile" ),
+                                                                            new ScopeArtifactFilter( "runtime" ),
+                                                                            new ScopeArtifactFilter( "test" ) ) ) );
+            filter.add( optionalFilter );
+
+            final DependencyNode node = dependencyGraphBuilder.buildDependencyGraph( project, filter );
+            final CollectingDependencyNodeVisitor collectingVisitor = new CollectingDependencyNodeVisitor();
+            node.accept( collectingVisitor );
+
+            final List<DependencyNode> dependencies = collectingVisitor.getNodes();
+            for ( final DependencyNode dep : dependencies )
+            {
+                final boolean isNativeLibrary = isNativeLibrary( sharedLibraries, dep.getArtifact().getType() );
+                log.debug( "Processing library : " + dep.getArtifact() + " isNative=" + isNativeLibrary );
+                if ( isNativeLibrary )
+                {
+                    artifacts.add( dep.getArtifact() );
                 }
             }
 
@@ -286,7 +290,7 @@ public class NativeHelper
         }
         catch ( Exception e )
         {
-            throw new MojoExecutionException( "Error while processing transient dependencies", e );
+            throw new MojoExecutionException( "Error while processing transitive dependencies", e );
         }
     }
 
@@ -469,7 +473,7 @@ public class NativeHelper
     public static boolean artifactHasHardwareArchitecture( Artifact artifact, String ndkArchitecture,
                                                            String defaultArchitecture )
     {
-        return "so".equals( artifact.getType() )
+        return Const.ArtifactType.NATIVE_SYMBOL_OBJECT.equals( artifact.getType() )
                 && ndkArchitecture.equals( extractArchitectureFromArtifact( artifact, defaultArchitecture ) );
     }
 

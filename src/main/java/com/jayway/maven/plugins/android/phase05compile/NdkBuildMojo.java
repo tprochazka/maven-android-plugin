@@ -16,8 +16,7 @@ package com.jayway.maven.plugins.android.phase05compile;
 import com.jayway.maven.plugins.android.AbstractAndroidMojo;
 import com.jayway.maven.plugins.android.CommandExecutor;
 import com.jayway.maven.plugins.android.ExecutionException;
-import com.jayway.maven.plugins.android.common.AetherHelper;
-import com.jayway.maven.plugins.android.common.AndroidExtension;
+import com.jayway.maven.plugins.android.common.Const;
 import com.jayway.maven.plugins.android.common.NativeHelper;
 import com.jayway.maven.plugins.android.config.PullParameter;
 import com.jayway.maven.plugins.android.configuration.HeaderFilesDirective;
@@ -26,7 +25,7 @@ import org.apache.commons.io.FileUtils;
 import org.apache.maven.archiver.MavenArchiveConfiguration;
 import org.apache.maven.archiver.MavenArchiver;
 import org.apache.maven.artifact.Artifact;
-import org.apache.maven.artifact.factory.ArtifactFactory;
+import org.apache.maven.artifact.handler.ArtifactHandler;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.project.MavenProject;
@@ -64,13 +63,13 @@ public class NdkBuildMojo extends AbstractAndroidMojo
     /**
      * Allows for overriding the default ndk-build executable.
      *
-     * @parameter expression="${android.ndk.ndk-build-executable}"
+     * @parameter property="android.ndk.ndk-build-executable"
      */
     @PullParameter
     private String ndkBuildExecutable;
 
     /**
-     * @parameter expression="${android.ndk.ndk-build-directory}"
+     * @parameter property="android.ndk.ndk-build-directory"
      */
     @PullParameter
     private String ndkBuildDirectory;
@@ -78,7 +77,7 @@ public class NdkBuildMojo extends AbstractAndroidMojo
     /**
      * Specifies the classifier with which the artifact should be stored in the repository
      *
-     * @parameter expression="${android.ndk.build.native-classifier}"
+     * @parameter property="android.ndk.build.native-classifier"
      */
     @PullParameter
     private String ndkClassifier;
@@ -86,7 +85,7 @@ public class NdkBuildMojo extends AbstractAndroidMojo
     /**
      * Specifies additional command line parameters to pass to ndk-build
      *
-     * @parameter expression="${android.ndk.build.command-line}"
+     * @parameter property="android.ndk.build.command-line"
      */
     @PullParameter
     protected String ndkBuildAdditionalCommandline;
@@ -97,7 +96,7 @@ public class NdkBuildMojo extends AbstractAndroidMojo
      * the ${project.build.directory}/libs/&lt;architecture&gt;.
      * If an APK is built as part of the invocation, the libraries will be included from here.
      *
-     * @parameter expression="${android.ndk.build.clear-native-artifacts}" default-value="false"
+     * @parameter property="android.ndk.build.clear-native-artifacts" default-value="false"
      */
     @PullParameter( defaultValue = "false" )
     private Boolean clearNativeArtifacts;
@@ -106,7 +105,7 @@ public class NdkBuildMojo extends AbstractAndroidMojo
      * Flag indicating whether the resulting native library should be attached as an artifact to the build.  This
      * means the resulting .so is installed into the repository as well as being included in the final APK.
      *
-     * @parameter expression="${android.ndk.build.attach-native-artifact}" default-value="false"
+     * @parameter property="android.ndk.build.attach-native-artifact" default-value="false"
      */
     @PullParameter( defaultValue = "false" )
     private Boolean attachNativeArtifacts;
@@ -114,7 +113,7 @@ public class NdkBuildMojo extends AbstractAndroidMojo
     /**
      * Build folder to place built native libraries into
      *
-     * @parameter expression="${android.ndk.build.ndk-output-directory}"
+     * @parameter property="android.ndk.build.ndk-output-directory"
      * default-value="${project.build.directory}/ndk-libs"
      */
     private File ndkOutputDirectory;
@@ -122,14 +121,14 @@ public class NdkBuildMojo extends AbstractAndroidMojo
     /**
      * <p>Folder containing native, static libraries compiled and linked by the NDK.</p>
      *
-     * @parameter expression="${android.nativeLibrariesOutputDirectory}" default-value="${project.basedir}/obj/local"
+     * @parameter property="android.nativeLibrariesOutputDirectory" default-value="${project.basedir}/obj/local"
      */
     private File nativeLibrariesOutputDirectory;
 
     /**
      * <p>Target to invoke on the native makefile.</p>
      *
-     * @parameter expression="${android.nativeTarget}"
+     * @parameter property="android.nativeTarget"
      */
     @PullParameter
     private String target;
@@ -137,7 +136,7 @@ public class NdkBuildMojo extends AbstractAndroidMojo
     /**
      * Defines the architecture for the NDK build
      *
-     * @parameter expression="${android.ndk.build.architecture}"
+     * @parameter property="android.ndk.build.architecture"
      * @deprecated Use {@link NdkBuildMojo#ndkArchitectures} instead
      */
     @PullParameter
@@ -146,7 +145,7 @@ public class NdkBuildMojo extends AbstractAndroidMojo
     /**
      * Defines the architectures for the NDK build - this is a space separated list (i.e x86 armeabi)
      *
-     * @parameter expression="${android.ndk.build.architectures}"
+     * @parameter property="android.ndk.build.architectures"
      */
     @PullParameter
     private String ndkArchitectures;
@@ -164,17 +163,10 @@ public class NdkBuildMojo extends AbstractAndroidMojo
     private NDKArchitectureToolchainMappings ndkArchitectureToolchainMappings;
 
     /**
-     * @component
-     * @readonly
-     * @required
-     */
-    protected ArtifactFactory artifactFactory;
-
-    /**
      * Flag indicating whether the header files used in the build should be included and attached to the build as
      * an additional artifact.
      *
-     * @parameter expression="${android.ndk.build.attach-header-files}" default-value="true"
+     * @parameter property="android.ndk.build.attach-header-files" default-value="true"
      */
     @PullParameter( defaultValue = "true" )
     private Boolean attachHeaderFiles;
@@ -186,7 +178,7 @@ public class NdkBuildMojo extends AbstractAndroidMojo
      * added to the resulting header archive.  This may be undesirable in most cases and is therefore turned off by
      * default.
      *
-     * @parameter expression="${android.ndk.build.use-local-src-include-paths}" default-value="false"
+     * @parameter property="android.ndk.build.use-local-src-include-paths" default-value="false"
      */
     @PullParameter( defaultValue = "false" )
     private Boolean useLocalSrcIncludePaths;
@@ -237,10 +229,15 @@ public class NdkBuildMojo extends AbstractAndroidMojo
     private JarArchiver jarArchiver;
 
     /**
+     * @component role="org.apache.maven.artifact.handler.ArtifactHandler" roleHint="har"
+     */
+    private ArtifactHandler harArtifactHandler;
+
+    /**
      * Flag indicating whether the header files for native, static library dependencies should be used.  If true,
      * the header archive for each statically linked dependency will be resolved.
      *
-     * @parameter expression="${android.ndk.build.use-header-archives}" default-value="true"
+     * @parameter property="android.ndk.build.use-header-archives" default-value="true"
      */
     @PullParameter( defaultValue = "true" )
     private Boolean useHeaderArchives;
@@ -265,7 +262,7 @@ public class NdkBuildMojo extends AbstractAndroidMojo
      * Flag indicating whether warnings should be ignored while compiling.  If true,
      * the build will not fail if warning are found during compile.
      *
-     * @parameter expression="${android.ndk.build.ignore-build-warnings}" default-value="true"
+     * @parameter property="android.ndk.build.ignore-build-warnings" default-value="true"
      */
     @PullParameter( defaultValue = "true" )
     private Boolean ignoreBuildWarnings;
@@ -277,20 +274,20 @@ public class NdkBuildMojo extends AbstractAndroidMojo
      * If the pattern matches, the output from the compiler will <strong>not</strong> be considered an error and compile
      * will be successful.
      *
-     * @parameter expression="${android.ndk.build.build-warnings-regular-expression}"
+     * @parameter property="android.ndk.build.build-warnings-regular-expression"
      * default-value=".*[warning|note]: .*"
      */
     @PullParameter( defaultValue = ".*[warning|note]: .*" )
     private String buildWarningsRegularExpression;
 
     /**
-     * @parameter expression="${android.ndk.build.skip-native-library-stripping}" default-value="false"
+     * @parameter property="android.ndk.build.skip-native-library-stripping" default-value="false"
      */
     @PullParameter( defaultValue = "false" )
     private Boolean skipStripping;
 
     /**
-     * @parameter expression="${android.ndk.build.ndk-toolchain}"
+     * @parameter property="android.ndk.build.ndk-toolchain"
      */
     @PullParameter
     private String ndkToolchain;
@@ -301,7 +298,7 @@ public class NdkBuildMojo extends AbstractAndroidMojo
      * the pom to override the default artifact name). The value should not
      * include the 'lib' prefix or filename extension (e.g. '.so').
      *
-     * @parameter expression="${android.ndk.build.build.final-library.name}"
+     * @parameter property="android.ndk.build.build.final-library.name"
      */
     @PullParameter
     private String ndkFinalLibraryName;
@@ -325,7 +322,7 @@ public class NdkBuildMojo extends AbstractAndroidMojo
     /**
      * Flag indicating whether to use the max available jobs for the host machine
      *
-     * @parameter expression="${android.ndk.build.maxJobs}" default-value="false"
+     * @parameter property="android.ndk.build.maxJobs" default-value="false"
      */
     @PullParameter( defaultValue = "false" )
     private Boolean maxJobs;
@@ -354,9 +351,10 @@ public class NdkBuildMojo extends AbstractAndroidMojo
 
             for ( String ndkArchitecture : resolvedNDKArchitectures )
             {
-                Preparation preparation = new Preparation().invoke( ndkArchitecture );
+                getLog().debug( "Resolving for NDK architecture : " + ndkArchitecture );
+                final Preparation preparation = new Preparation().invoke( ndkArchitecture );
                 boolean libsDirectoryExists = preparation.isLibsDirectoryExists();
-                File directoryToRemove = preparation.getDirectoryToRemove();
+                final File directoryToRemove = preparation.getDirectoryToRemove();
 
                 // Start setting up the command line to be executed
                 final CommandExecutor executor = CommandExecutor.Factory.createDefaultCommmandExecutor();
@@ -368,13 +366,11 @@ public class NdkBuildMojo extends AbstractAndroidMojo
                 final Set<Artifact> nativeLibraryArtifacts = findNativeLibraryDependencies();
 
                 // If there are any static libraries the code needs to link to, include those in the make file
-                final Set<Artifact> resolveNativeLibraryArtifacts = AetherHelper
-                        .resolveArtifacts( nativeLibraryArtifacts, repoSystem, repoSession, projectRepos );
-                if ( getLog().isDebugEnabled() )
-                {
-                    getLog().debug( "resolveArtifacts found " + resolveNativeLibraryArtifacts.size()
-                            + ": " + resolveNativeLibraryArtifacts.toString() );
-                }
+                final Set<Artifact> resolveNativeLibraryArtifacts =
+                        getArtifactResolverHelper().resolveArtifacts( nativeLibraryArtifacts );
+
+                getLog().debug( "resolveArtifacts found " + resolveNativeLibraryArtifacts.size()
+                        + ": " + resolveNativeLibraryArtifacts.toString() );
 
                 final File makefileDir = new File( project.getBuild().getDirectory(), NDK_MAKFILE_DIRECTORY );
                 makefileDir.mkdirs();
@@ -387,8 +383,9 @@ public class NdkBuildMojo extends AbstractAndroidMojo
                 }
 
                 final MakefileHelper makefileHelper = new MakefileHelper( getLog(),
-                                                                          repoSystem, repoSession, projectRepos,
-                                                                          unpackedApkLibsDirectory );
+                        getUnpackedLibHelper(), getArtifactResolverHelper(),
+                        harArtifactHandler, getUnpackedLibsDirectory()
+                );
                 final MakefileHelper.MakefileHolder makefileHolder = makefileHelper
                         .createMakefileFromArtifacts( new File( ndkBuildDirectory ),
                                                       resolveNativeLibraryArtifacts, ndkArchitecture, "armeabi",
@@ -453,20 +450,21 @@ public class NdkBuildMojo extends AbstractAndroidMojo
                 configureNdkToolchain( ndkArchitecture, commands );
                 configureAdditionalCommands( commands );
 
-                // If a build target is specified, tag that onto the command line as the
-                // very last of the parameters
+                // If a build target is specified, tag that onto the command line as the very last of the parameters
                 if ( target != null )
                 {
                     commands.add( target );
                 }
-                else /*if ( "a".equals( project.getPackaging() ) )*/
+                else /*if ( Const.ArtifactType.NATIVE_IMPLEMENTATION_ARCHIVE.equals( project.getPackaging() ) )*/
                 {
                     commands.add( project.getArtifactId() );
                 }
 
                 final String ndkBuildPath = resolveNdkBuildExecutable();
-                getLog().info( ndkBuildPath + " " + commands.toString() );
+                getLog().debug( ndkBuildPath + " " + commands.toString() );
+                getLog().info( "Executing NDK " + ndkArchitecture + " make at : " + ndkBuildDirectory );
 
+                executor.setCaptureStdOut( true );
                 executor.executeCommand( ndkBuildPath, commands, project.getBasedir(), true );
 
                 cleanUp( preparation.getNativeLibDirectory(), ndkArchitecture, libsDirectoryExists, directoryToRemove,
@@ -567,7 +565,8 @@ public class NdkBuildMojo extends AbstractAndroidMojo
             // Attempt to attach the native library if the project is defined as a "pure" native Android library
             // (packaging is 'so' or 'a') or if the plugin has been configured to attach the native library to the
             // build
-            if ( "so".equals( project.getPackaging() ) || "a".equals( project.getPackaging() )
+            if ( Const.ArtifactType.NATIVE_SYMBOL_OBJECT.equals( project.getPackaging() )
+                    || Const.ArtifactType.NATIVE_IMPLEMENTATION_ARCHIVE.equals( project.getPackaging() )
                     || attachNativeArtifacts )
             {
 
@@ -668,7 +667,7 @@ public class NdkBuildMojo extends AbstractAndroidMojo
                 }
 
                 // FIXME: The following logic won't work for an APKLIB building a static library
-                if ( "a".equals( project.getPackaging() ) )
+                if ( Const.ArtifactType.NATIVE_IMPLEMENTATION_ARCHIVE.equals( project.getPackaging() ) )
                 {
                     return name.startsWith(
                             "lib" + libraryName ) && name.endsWith( ".a" );
@@ -716,7 +715,8 @@ public class NdkBuildMojo extends AbstractAndroidMojo
     {
         final File libraryFile;
         // Find the nativeArtifactFile in the nativeLibDirectory/ndkFinalLibraryName
-        if ( "so".equals( project.getPackaging() ) || "a".equals( project.getPackaging() ) )
+        if ( Const.ArtifactType.NATIVE_SYMBOL_OBJECT.equals( project.getPackaging() )
+                || Const.ArtifactType.NATIVE_IMPLEMENTATION_ARCHIVE.equals( project.getPackaging() ) )
         {
             libraryFile = new File( nativeLibDirectory,
                     "lib" + ndkFinalLibraryName + "." + project.getPackaging() );
@@ -818,7 +818,7 @@ public class NdkBuildMojo extends AbstractAndroidMojo
                 }
             } );
             stripCommandExecutor.setLogger( getLog() );
-
+            stripCommandExecutor.setCaptureStdOut( true );
             stripCommandExecutor.executeCommand( resolveNdkStripper( file ).getAbsolutePath(),
                                                  Arrays.asList( file.getAbsolutePath() ) );
         }
@@ -934,16 +934,8 @@ public class NdkBuildMojo extends AbstractAndroidMojo
                 classifier += "-" + ndkClassifier;
             }
 
-            if ( AndroidExtension.APKLIB.equals( project.getPackaging() ) )
-            {
-                projectHelper.attachArtifact( project, "har", 
-                        classifier,
-                        jarFile );
-            }
-            else
-            {
-                projectHelper.attachArtifact( project, "har", classifier, jarFile );
-            }
+            getLog().debug( "Attaching 'har' classifier=" + classifier + " file=" + jarFile );
+            projectHelper.attachArtifact( project, Const.ArtifactType.NATIVE_HEADER_ARCHIVE, classifier, jarFile );
 
         }
         catch ( Exception e )
@@ -956,7 +948,7 @@ public class NdkBuildMojo extends AbstractAndroidMojo
                                                 Set<Artifact> resolveNativeLibraryArtifacts, String ndkArchitecture )
     {
         // Only add the LOCAL_STATIC_LIBRARIES
-        if ( NativeHelper.hasStaticNativeLibraryArtifact( resolveNativeLibraryArtifacts, unpackedApkLibsDirectory, 
+        if ( NativeHelper.hasStaticNativeLibraryArtifact( resolveNativeLibraryArtifacts, getUnpackedLibsDirectory(),
                                                           ndkArchitecture ) )
         {
             String staticlibs = makefileHelper.createLibraryList( resolveNativeLibraryArtifacts, 
@@ -967,7 +959,7 @@ public class NdkBuildMojo extends AbstractAndroidMojo
         }
 
         // Only add the LOCAL_SHARED_LIBRARIES
-        if ( NativeHelper.hasSharedNativeLibraryArtifact( resolveNativeLibraryArtifacts, unpackedApkLibsDirectory, 
+        if ( NativeHelper.hasSharedNativeLibraryArtifact( resolveNativeLibraryArtifacts, getUnpackedLibsDirectory(),
                                                           ndkArchitecture ) )
         {
             String sharedlibs = makefileHelper.createLibraryList( resolveNativeLibraryArtifacts, 
@@ -980,23 +972,19 @@ public class NdkBuildMojo extends AbstractAndroidMojo
     
     private Set<Artifact> findNativeLibraryDependencies() throws MojoExecutionException
     {
-        NativeHelper nativeHelper = new NativeHelper( project, projectRepos, repoSession, repoSystem, artifactFactory,
-                getLog() );
+        final NativeHelper nativeHelper = getNativeHelper();
         final Set<Artifact> staticLibraryArtifacts = nativeHelper
-                .getNativeDependenciesArtifacts( unpackedApkLibsDirectory, false );
+                .getNativeDependenciesArtifacts( this, getUnpackedLibsDirectory(), false );
         final Set<Artifact> sharedLibraryArtifacts = nativeHelper
-                .getNativeDependenciesArtifacts( unpackedApkLibsDirectory, true );
+                .getNativeDependenciesArtifacts( this, getUnpackedLibsDirectory(), true );
         
         final Set<Artifact> mergedArtifacts = new LinkedHashSet<Artifact>();
         filterNativeDependencies( mergedArtifacts, staticLibraryArtifacts );
         filterNativeDependencies( mergedArtifacts, sharedLibraryArtifacts );
 
-        if ( getLog().isDebugEnabled() )
-        {
-            getLog().debug( "findNativeLibraryDependencies found " + mergedArtifacts.size() 
-                    + ": " + mergedArtifacts.toString() );
-        }
-        
+        getLog().debug( "findNativeLibraryDependencies found " + mergedArtifacts.size()
+                + ": " + mergedArtifacts.toString() );
+
         return mergedArtifacts;
     }
 
@@ -1034,14 +1022,17 @@ public class NdkBuildMojo extends AbstractAndroidMojo
      */
     private String resolveArtifactType( File file )
     {
-        if ( "so".equals( project.getPackaging() ) || "a".equals( project.getPackaging() ) )
+        if ( Const.ArtifactType.NATIVE_SYMBOL_OBJECT.equals( project.getPackaging() )
+                || Const.ArtifactType.NATIVE_IMPLEMENTATION_ARCHIVE.equals( project.getPackaging() ) )
         {
             return project.getPackaging();
         }
         else
         {
             // At this point, the file (as found by our filtering previously will end with either 'so' or 'a'
-            return file.getName().endsWith( "so" ) ? "so" : "a";
+            return file.getName().endsWith( Const.ArtifactType.NATIVE_SYMBOL_OBJECT )
+                    ? Const.ArtifactType.NATIVE_SYMBOL_OBJECT
+                    : Const.ArtifactType.NATIVE_IMPLEMENTATION_ARCHIVE;
         }
     }
 
