@@ -71,7 +71,7 @@
         <url>http://github.com/jayway/maven-android-plugin/tree/${scm.branch}</url>
         <connection>scm:git:git://github.com/jayway/maven-android-plugin.git</connection>
         <developerConnection>scm:git:ssh://git@github.com/jayway/maven-android-plugin.git</developerConnection>
-      <tag>HEAD</tag>
+      <tag>3.9.0-rc.2</tag>
     </scm>
 
     <issueManagement>
@@ -110,7 +110,7 @@
     </mailingLists>
 
     <prerequisites>
-        <!--maven>3.1.1</maven-->
+        <maven>3.0.4</maven>
     </prerequisites>
 
     <dependencyManagement>
@@ -192,18 +192,6 @@
             <dependency>
                 <groupId>org.apache.maven</groupId>
                 <artifactId>maven-artifact</artifactId>
-                <version>${maven.api.version}</version>
-            </dependency>
-
-            <dependency>
-                <groupId>org.apache.maven</groupId>
-                <artifactId>maven-model</artifactId>
-                <version>${maven.api.version}</version>
-            </dependency>
-
-            <dependency>
-                <groupId>org.apache.maven</groupId>
-                <artifactId>maven-plugin-api</artifactId>
                 <version>${maven.api.version}</version>
             </dependency>
 
@@ -401,23 +389,6 @@
 
         <dependency>
             <groupId>org.apache.maven</groupId>
-            <artifactId>maven-model</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>org.apache.maven</groupId>
-            <artifactId>maven-plugin-api</artifactId>
-            <!-- we use a new version of asm and there are conflict, the older 3.x version comes in via sisu -->
-            <exclusions>
-              <exclusion>
-                <artifactId>asm</artifactId>
-                <groupId>asm</groupId>
-              </exclusion>
-            </exclusions>
-        </dependency>
-
-        <dependency>
-            <groupId>org.apache.maven</groupId>
             <artifactId>maven-compat</artifactId>
         </dependency>
 
@@ -474,7 +445,7 @@
         </dependency>
 
         <dependency>
-            <groupId>org.apache.maven.shared</groupId>
+            <groupId>com.simpligility.org.apache.maven.shared</groupId>
             <artifactId>maven-dependency-tree</artifactId>
         </dependency>
 
