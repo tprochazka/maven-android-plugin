@@ -32,6 +32,7 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static com.jayway.maven.plugins.android.common.AndroidExtension.AAR;
 import static com.jayway.maven.plugins.android.common.AndroidExtension.APKLIB;
 
 /**
@@ -107,14 +108,13 @@ public class NativeHelper
                 ApklibMojo.NATIVE_LIBRARIES_FOLDER + File.separator + ndkArchitecture );
         if ( libsFolder.exists() )
         {
-            File[] libFiles = libsFolder.listFiles( new FilenameFilter()
+            return libsFolder.listFiles( new FilenameFilter()
             {
                 public boolean accept( final File dir, final String name )
                 {
                     return name.startsWith( "lib" ) && name.endsWith( ( staticLibrary ? ".a" : ".so" ) );
                 }
             } );
-            return libFiles;
         }
         return null;
     }
@@ -132,19 +132,18 @@ public class NativeHelper
         //       have created our own above and add to that.
         allArtifacts.addAll( project.getDependencyArtifacts() );
 
-        // Add all attached artifacts as well - this could come from the NDK mojo for example
-        allArtifacts.addAll( project.getAttachedArtifacts() );
-
         // Add all transitive artifacts as well
         // this allows armeabi classifier -> apklib -> apklib -> apk chaining to only include armeabi in APK
         allArtifacts.addAll( project.getArtifacts() );
 
         for ( Artifact artifact : allArtifacts )
         {
+            final boolean isNativeLibrary = isNativeLibrary( sharedLibraries, artifact.getType() );
+
             log.debug( "Checking artifact : " + artifact );
             // A null value in the scope indicates that the artifact has been attached
             // as part of a previous build step (NDK mojo)
-            if ( isNativeLibrary( sharedLibraries, artifact.getType() ) && artifact.getScope() == null )
+            if ( isNativeLibrary && artifact.getScope() == null )
             {
                 // Including attached artifact
                 log.debug( "Including attached artifact: " + artifact + ". Artifact scope is not set." );
@@ -152,7 +151,7 @@ public class NativeHelper
             }
             else
             {
-                if ( isNativeLibrary( sharedLibraries, artifact.getType() ) && (
+                if ( isNativeLibrary && (
                         Artifact.SCOPE_COMPILE.equals( artifact.getScope() ) || Artifact.SCOPE_RUNTIME
                                 .equals( artifact.getScope() ) ) )
                 {
@@ -163,10 +162,10 @@ public class NativeHelper
                 {
                     final String type = artifact.getType();
 
-                    if ( APKLIB.equals( type ) )
+                    if ( APKLIB.equals( type ) || AAR.equals( type ) )
                     {
                         // Check if the artifact contains a libs folder - if so, include it in the list
-                        File libsFolder = null;
+                        final File libsFolder;
                         if ( mojo != null )
                         {
                             libsFolder = mojo.getUnpackedLibNativesFolder( artifact );
@@ -175,7 +174,8 @@ public class NativeHelper
                         {
                             // This is used from NativeHelperTest since we have no AbstractAndroidMojo there
                             libsFolder = new File(
-                                AbstractAndroidMojo.getLibraryUnpackDirectory( unpackDirectory, artifact ), "libs" );
+                                AbstractAndroidMojo.getLibraryUnpackDirectory( unpackDirectory, artifact ),
+                                AAR.equals( type ) ? "jni" : "libs" );
                         }
 
                         if ( !libsFolder.exists() )
@@ -195,7 +195,8 @@ public class NativeHelper
                         // so all native libs remain
                         if ( libsFolder.list( new PatternFilenameFilter( "^.*(?<!(?i)\\.jar)$" ) ).length > 0 )
                         {
-                            log.debug( "Including attached artifact: " + artifact + ". Artifact is APKLIB." );
+                            log.debug( "Including attached artifact: " + artifact + ". Artifact is "
+                                    + artifact.getType() );
                             filteredArtifacts.add( artifact );
                         }
                     }

@@ -41,6 +41,10 @@ import org.apache.commons.io.filefilter.IOFileFilter;
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
+import org.apache.maven.plugins.annotations.LifecyclePhase;
+import org.apache.maven.plugins.annotations.Mojo;
+import org.apache.maven.plugins.annotations.Parameter;
+import org.apache.maven.plugins.annotations.ResolutionScope;
 
 import java.io.File;
 import java.io.FileFilter;
@@ -51,6 +55,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -74,10 +80,10 @@ import static com.jayway.maven.plugins.android.common.AndroidExtension.APKLIB;
  * <code>&lt;sign&gt;&lt;debug&gt;false&lt;/debug&gt;&lt;/sign&gt;</code>.
  *
  * @author hugo.josefson@jayway.com
- * @goal apk
- * @phase package
- * @requiresDependencyResolution compile
  */
+@Mojo( name = "apk", 
+       defaultPhase = LifecyclePhase.PACKAGE, 
+       requiresDependencyResolution = ResolutionScope.COMPILE )
 public class ApkMojo extends AbstractAndroidMojo
 {
 
@@ -99,19 +105,16 @@ public class ApkMojo extends AbstractAndroidMojo
      * <a href="http://code.google.com/p/maven-android-plugin/issues/detail?id=2">Issue 2</a>.)
      * </ul></p>
      * <p>Can also be configured from command-line with parameter <code>-Dandroid.sign.debug</code>.</p>
-     *
-     * @parameter
      */
+    @Parameter
     private Sign sign;
 
     /**
      * <p>Parameter designed to pick up <code>-Dandroid.sign.debug</code> in case there is no pom with a
      * <code>&lt;sign&gt;</code> configuration tag.</p>
      * <p>Corresponds to {@link com.jayway.maven.plugins.android.configuration.Sign#debug}.</p>
-     *
-     * @parameter property="android.sign.debug" default-value="auto"
-     * @readonly
      */
+    @Parameter( property = "android.sign.debug", defaultValue = "auto", readonly = true )
     private String signDebug;
 
     /**
@@ -119,10 +122,9 @@ public class ApkMojo extends AbstractAndroidMojo
      * This value will be passed on to the aapt parameter --rename-instrumentation-target-package.
      * Look to aapt for more help on this. </p>
      *
-     * @parameter property="android.renameInstrumentationTargetPackage"
-     *
      * TODO pass this into AaptExecutor
      */
+    @Parameter( property = "android.renameInstrumentationTargetPackage" )
     private String renameInstrumentationTargetPackage;
 
     /**
@@ -130,26 +132,24 @@ public class ApkMojo extends AbstractAndroidMojo
      * the content of all embedded dependencies and checks they are no duplicates inside those dependencies. Indeed,
      * Android does not support duplicates, and all dependencies are inlined in the APK. If duplicates files are found,
      * the resource is kept in the first dependency and removes from others.
-     *
-     * @parameter property="android.extractDuplicates" default-value="false"
      */
+    @Parameter( property = "android.extractDuplicates", defaultValue = "false" )
     private boolean extractDuplicates;
 
     /**
-     * <p>Temporary folder for collecting native libraries.</p>
-     *
-     * @parameter default-value="${project.build.directory}/libs"
-     * @readonly
-     */
-    private File nativeLibrariesOutputDirectory;
-
-    /**
      * <p>Classifier to add to the artifact generated. If given, the artifact will be an attachment instead.</p>
-     *
-     * @parameter
      */
+    @Parameter
     private String classifier;
 
+    /**
+     * The apk file produced by the apk goal. Per default the file is placed into the build directory (target
+     * normally) using the build final name and apk as extension.
+     */
+    @Parameter( property = "android.outputApk", 
+                defaultValue = "${project.build.directory}/${project.build.finalName}.apk" )
+    private String outputApk;
+    
     /**
      * <p>Additional source directories that contain resources to be packaged into the apk.</p>
      * <p>These are not source directories, that contain java classes to be compiled.
@@ -165,9 +165,8 @@ public class ApkMojo extends AbstractAndroidMojo
      *   ...
      * &lt;/configuration&gt;
      * </pre>
-     *
-     * @parameter property="android.sourceDirectories" default-value=""
      */
+    @Parameter( property = "android.sourceDirectories" )
     private File[] sourceDirectories;
 
     /**
@@ -198,7 +197,6 @@ public class ApkMojo extends AbstractAndroidMojo
      * See also <a href="http://code.google.com/p/maven-android-plugin/issues/detail?id=97">Issue 97</a>
      * </p>
      *
-     * @parameter property="android.apk.metaIncludes"
      * @deprecated in favour of apk.metaInf
      */
     @PullParameter
@@ -207,30 +205,24 @@ public class ApkMojo extends AbstractAndroidMojo
     @PullParameter( defaultValueGetterMethod = "getDefaultMetaInf" )
     private MetaInf apkMetaInf;
 
-    /**
-     * @parameter alias="metaInf"
-     */
+    @Parameter( alias = "metaInf" )
     private MetaInf pluginMetaInf;
 
     /**
      * Defines whether or not the APK is being produced in debug mode or not.
-     *
-     * @parameter property="android.apk.debug"
      */
+    @Parameter( property = "android.apk.debug" )
     @PullParameter( defaultValue = "false" )
     private Boolean apkDebug;
 
-    /**
-     * @parameter property="android.nativeToolchain"
-     */
+    @Parameter( property = "android.nativeToolchain" )
     @PullParameter( defaultValue = "arm-linux-androideabi-4.4.3" )
     private String apkNativeToolchain;
 
     /**
      * Specifies the final name of the library output by the build (this allows
-     *
-     * @parameter property="android.ndk.build.build.final-library.name"
      */
+    @Parameter( property = "android.ndk.build.build.final-library.name" )
     private String ndkFinalLibraryName;
 
     /**
@@ -239,33 +231,30 @@ public class ApkMojo extends AbstractAndroidMojo
      * resulting APK.
      * 
      * The patterns are standard Java regexes.
-     * 
-     * @parameter
      */
+    @Parameter
     private String[] excludeJarResources;
+
     private Pattern[] excludeJarResourcesPatterns;
     
     /**
      * Embedded configuration of this mojo.
-     *
-     * @parameter
      */
+    @Parameter
     @ConfigPojo( prefix = "apk" )
     private Apk apk;
 
-    private static final Pattern PATTERN_JAR_EXT = Pattern.compile( "^.+\\.jar$", 2 );
+    private static final Pattern PATTERN_JAR_EXT = Pattern.compile( "^.+\\.jar$", Pattern.CASE_INSENSITIVE );
 
     /**
      * <p>Default hardware architecture for native library dependencies (with {@code &lt;type>so&lt;/type>})
      * without a classifier.</p>
      * <p>Valid values currently include {@code armeabi}, {@code armeabi-v7a}, {@code mips} and {@code x86}.</p>
-     *
-     * @parameter property="android.nativeLibrariesDependenciesHardwareArchitectureDefault" default-value="armeabi"
      */
+    @Parameter( property = "android.nativeLibrariesDependenciesHardwareArchitectureDefault", defaultValue = "armeabi" )
     private String nativeLibrariesDependenciesHardwareArchitectureDefault;
 
     /**
-     *
      * @throws MojoExecutionException
      * @throws MojoFailureException
      */
@@ -298,7 +287,7 @@ public class ApkMojo extends AbstractAndroidMojo
         }
         
         // Initialize apk build configuration
-        File outputFile = new File( project.getBuild().getDirectory(), project.getBuild().getFinalName() + "." + APK );
+        File outputFile = new File( outputApk );
         final boolean signWithDebugKeyStore = getAndroidSigner().isSignWithDebugKeyStore();
 
         if ( getAndroidSigner().shouldCreateBothSignedAndUnsignedApk() )
@@ -331,23 +320,26 @@ public class ApkMojo extends AbstractAndroidMojo
 
     void createApkFile( File outputFile, boolean signWithDebugKeyStore ) throws MojoExecutionException
     {
+        //this needs to come from DexMojo
         File dexFile = new File( project.getBuild().getDirectory(), "classes.dex" );
+        if ( !dexFile.exists() )
+        {
+            dexFile = new File( project.getBuild().getDirectory(), "classes.zip" );
+        }
+
         File zipArchive = new File( project.getBuild().getDirectory(), project.getBuild().getFinalName() + ".ap_" );
         ArrayList<File> sourceFolders = new ArrayList<File>();
         if ( sourceDirectories != null )
         {
-            for ( File f : sourceDirectories )
-            {
-                sourceFolders.add( f );
-            }
+            sourceFolders.addAll( Arrays.asList( sourceDirectories ) );
         }
         ArrayList<File> jarFiles = new ArrayList<File>();
-        ArrayList<File> nativeFolders = new ArrayList<File>();
 
         // Process the native libraries, looking both in the current build directory as well as
         // at the dependencies declared in the pom.  Currently, all .so files are automatically included
-        processNativeLibraries( nativeFolders );
-        
+        final Collection<File> nativeFolders = getNativeLibraryFolders();
+        getLog().info( "Adding native libraries : " + nativeFolders );
+
         doAPKWithAPKBuilder( outputFile, dexFile, zipArchive, sourceFolders, jarFiles, nativeFolders,
                     signWithDebugKeyStore );
 
@@ -422,8 +414,17 @@ public class ApkMojo extends AbstractAndroidMojo
                     continue;
                 }
             }
-
-            zos.putNextEntry( new ZipEntry( zn ) );
+            final ZipEntry ne;
+            if ( ze.getMethod() == ZipEntry.STORED )
+            {
+                ne = new ZipEntry( ze );
+            }
+            else
+            {
+                ne = new ZipEntry( zn );
+            }
+            
+            zos.putNextEntry( ne );
 
             InputStream is = zin.getInputStream( ze );
 
@@ -470,8 +471,8 @@ public class ApkMojo extends AbstractAndroidMojo
      * @param signWithDebugKeyStore enables the signature of the APK using the debug key
      * @throws MojoExecutionException if the APK cannot be created.
      */
-    private void doAPKWithAPKBuilder( File outputFile, File dexFile, File zipArchive, ArrayList<File> sourceFolders,
-                                      ArrayList<File> jarFiles, ArrayList<File> nativeFolders,
+    private void doAPKWithAPKBuilder( File outputFile, File dexFile, File zipArchive, Collection<File> sourceFolders,
+                                      List<File> jarFiles, Collection<File> nativeFolders,
                                       boolean signWithDebugKeyStore ) throws MojoExecutionException
     {
         getLog().debug( "Building APK with internal APKBuilder" );
@@ -539,7 +540,7 @@ public class ApkMojo extends AbstractAndroidMojo
                             ( signWithDebugKeyStore ) ? debugKeyStore : null, null );
             if ( apkDebug )
             {
-                apkBuilder.setDebugMode( apkDebug );
+                apkBuilder.setDebugMode( true );
             }
 
             for ( File sourceFolder : sourceFolders )
@@ -643,8 +644,8 @@ public class ApkMojo extends AbstractAndroidMojo
         }
 
         // Create a new Jar file
-        FileOutputStream fos = null;
-        ZipOutputStream jos = null;
+        final FileOutputStream fos;
+        final ZipOutputStream jos;
         try
         {
             fos = new FileOutputStream( out );
@@ -656,7 +657,7 @@ public class ApkMojo extends AbstractAndroidMojo
             return null;
         }
 
-        ZipFile inZip = null;
+        final ZipFile inZip;
         try
         {
             inZip = new ZipFile( in );
@@ -684,14 +685,9 @@ public class ApkMojo extends AbstractAndroidMojo
 
         try
         {
-            if ( inZip != null )
-            {
-                inZip.close();
-            }
+            inZip.close();
             jos.close();
             fos.close();
-            jos = null;
-            fos = null;
         }
         catch ( IOException e )
         {
@@ -719,107 +715,57 @@ public class ApkMojo extends AbstractAndroidMojo
         }
     }
 
-    private void processNativeLibraries( final List<File> natives ) throws MojoExecutionException
+    private Collection<File> getNativeLibraryFolders() throws MojoExecutionException
     {
-        for ( String ndkArchitecture : AndroidNdk.NDK_ARCHITECTURES )
-        {
-            processNativeLibraries( natives, ndkArchitecture );
-        }
-    }
+        final List<File> natives = new ArrayList<File>();
 
-    private void addNativeDirectory( final List<File> natives, final File nativeDirectory )
-    {
-        if ( ! natives.contains( nativeDirectory ) )
+        if ( nativeLibrariesDirectory.exists() )
         {
-            natives.add( nativeDirectory );
+            // If we have prebuilt native libs then copy them over to the native output folder.
+            // NB they will be copied over the top of any native libs generated as part of the NdkBuildMojo
+            copyLocalNativeLibraries( nativeLibrariesDirectory, ndkOutputDirectory );
         }
-    }
 
-    private void processNativeLibraries( final List<File> natives, String ndkArchitecture )
-            throws MojoExecutionException
-    {
-        // Examine the native libraries directory for content. This will only be true if:
-        // a) the directory exists
-        // b) it contains at least 1 file
-        final boolean hasValidNativeLibrariesDirectory = hasValidNativeLibrariesDirectory();
-        final boolean hasValidBuildNativeLibrariesDirectory = hasValidBuildNativeLibrariesDirectory();
         final Set<Artifact> artifacts = getNativeLibraryArtifacts();
-
-        if ( artifacts.isEmpty() && hasValidNativeLibrariesDirectory && ! hasValidBuildNativeLibrariesDirectory )
+        for ( Artifact resolvedArtifact : artifacts )
         {
-
-            getLog().debug(
-                    "No native library dependencies detected, will point directly to " + nativeLibrariesDirectory );
-
-            // Point directly to the directory in this case - no need to copy files around
-            addNativeDirectory( natives, nativeLibrariesDirectory );
-
-            // FIXME: This would pollute a libs folder which is under source control
-            // FIXME: Would be better to not support this case?
-            optionallyCopyGdbServer( nativeLibrariesDirectory, ndkArchitecture );
-
-        }
-        else
-        {
-            if ( ! artifacts.isEmpty() || hasValidNativeLibrariesDirectory )
+            if ( APKLIB.equals( resolvedArtifact.getType() ) || AAR.equals( resolvedArtifact.getType() ) )
             {
-                // In this case, we may have both .so files in it's normal location
-                // as well as .so dependencies
+                // If the artifact is an AAR or APKLIB then add their native libs folder to the result.
+                final File folder = getUnpackedLibNativesFolder( resolvedArtifact );
+                getLog().debug( "Adding native library folder " + folder );
+                natives.add( folder );
+            }
 
-                final File destinationDirectory = makeNativeLibrariesOutputDirectory();
-
-                // Point directly to the directory
-                addNativeDirectory( natives, destinationDirectory );
-
-                // If we have a valid native libs, copy those files - these already come in the structure required
-                if ( hasValidNativeLibrariesDirectory )
+            // Copy the native lib dependencies into the native lib output folder
+            for ( String ndkArchitecture : AndroidNdk.NDK_ARCHITECTURES )
+            {
+                if ( NativeHelper.artifactHasHardwareArchitecture( resolvedArtifact,
+                        ndkArchitecture, nativeLibrariesDependenciesHardwareArchitectureDefault ) )
                 {
-                    copyLocalNativeLibraries( nativeLibrariesDirectory, destinationDirectory );
+                    // If the artifact is a native lib then copy it into the native libs output folder.
+                    copyNativeLibraryArtifact( resolvedArtifact, ndkOutputDirectory, ndkArchitecture );
                 }
-
-                if ( ! artifacts.isEmpty() )
-                {
-                    for ( Artifact resolvedArtifact : artifacts )
-                    {
-                        if ( NativeHelper.artifactHasHardwareArchitecture( resolvedArtifact,
-                                ndkArchitecture, nativeLibrariesDependenciesHardwareArchitectureDefault ) )
-                        {
-                            copyNativeLibraryArtifactFileToDirectory( resolvedArtifact, destinationDirectory,
-                                    ndkArchitecture );
-                        }
-                        else if ( APKLIB.equals( resolvedArtifact.getType() )
-                                || AAR.equals( resolvedArtifact.getType() ) )
-                        {
-                                addNativeDirectory( natives, getUnpackedLibNativesFolder( resolvedArtifact ) );
-                        }
-                    }
-                }
-
-                // Finally, think about copying the gdbserver binary into the APK output as well
-                optionallyCopyGdbServer( destinationDirectory, ndkArchitecture );
             }
         }
-    }
 
-    /**
-     * Examine the native libraries directory for content. This will only be true if:
-     * <ul>
-     * <li>The directory exists</li>
-     * <li>It contains at least 1 file</li>
-     * </ul>
-     */
-    private boolean hasValidNativeLibrariesDirectory()
-    {
-        return nativeLibrariesDirectory != null
-                && nativeLibrariesDirectory.exists()
-                && ( nativeLibrariesDirectory.listFiles() != null && nativeLibrariesDirectory.listFiles().length > 0 );
-    }
+        if ( apkDebug )
+        {
+            // Copy the gdbserver binary into the native libs output folder (for each architecture).
+            for ( String ndkArchitecture : AndroidNdk.NDK_ARCHITECTURES )
+            {
+                copyGdbServer( ndkOutputDirectory, ndkArchitecture );
+            }
+        }
 
-    private boolean hasValidBuildNativeLibrariesDirectory()
-    {
-        return nativeLibrariesOutputDirectory.exists() && (
-                nativeLibrariesOutputDirectory.listFiles() != null
-                        && nativeLibrariesOutputDirectory.listFiles().length > 0 );
+        if ( ndkOutputDirectory.exists() )
+        {
+            // If we have any native libs in the native output folder then add the output folder to the result.
+            getLog().debug( "Adding built native library folder " + ndkOutputDirectory );
+            natives.add( ndkOutputDirectory );
+        }
+
+        return natives;
     }
 
     /**
@@ -831,20 +777,9 @@ public class ApkMojo extends AbstractAndroidMojo
         return getNativeHelper().getNativeDependenciesArtifacts( this, getUnpackedLibsDirectory(), true );
     }
 
-    /**
-     * Create the ${project.build.outputDirectory}/libs directory.
-     *
-     * @return File reference to the native libraries output directory.
-     */
-    private File makeNativeLibrariesOutputDirectory()
-    {
-        final File destinationDirectory = new File( nativeLibrariesOutputDirectory.getAbsolutePath() );
-        destinationDirectory.mkdirs();
-        return destinationDirectory;
-    }
-
-    private void copyNativeLibraryArtifactFileToDirectory( Artifact artifact, File destinationDirectory,
-                                                           String ndkArchitecture ) throws MojoExecutionException
+    private void copyNativeLibraryArtifact( Artifact artifact,
+                                            File destinationDirectory,
+                                            String ndkArchitecture ) throws MojoExecutionException
     {
 
         final File artifactFile = getArtifactResolverHelper().resolveArtifactToFile( artifact );
@@ -862,35 +797,35 @@ public class ApkMojo extends AbstractAndroidMojo
                 filename = artifact.getFile().getName();
             }
 
-            final File finalDestinationDirectory = getFinalDestinationDirectoryFor( artifact,
-                    destinationDirectory, ndkArchitecture );
-            final File file = new File( finalDestinationDirectory, filename );
-            getLog().debug(
-                    "Copying native dependency " + artifactId + " (" + artifact.getGroupId()
-                            +
-                            ") to " + file );
+            final File folder = new File( destinationDirectory, ndkArchitecture );
+            final File file = new File( folder, filename );
+            getLog().debug( "Copying native dependency " + artifactId + " (" + artifact.getGroupId() + ") to " + file );
             FileUtils.copyFile( artifactFile, file );
         }
-        catch ( Exception e )
+        catch ( IOException e )
         {
             throw new MojoExecutionException( "Could not copy native dependency.", e );
         }
     }
 
 
-    private void optionallyCopyGdbServer( File destinationDirectory, String architecture ) throws MojoExecutionException
+    /**
+     * Copy the Ndk GdbServer into the architecture output folder if the folder exists but the GdbServer doesn't.
+     */
+    private void copyGdbServer( File destinationDirectory, String architecture ) throws MojoExecutionException
     {
 
         try
         {
             final File destDir = new File( destinationDirectory, architecture );
-            if ( apkDebug && destDir.exists() )
+            if ( destDir.exists() )
             {
                 // Copy the gdbserver binary to libs/<architecture>/
                 final File gdbServerFile = getAndroidNdk().getGdbServer( architecture );
                 final File destFile = new File( destDir, "gdbserver" );
                 if ( ! destFile.exists() )
                 {
+                    getLog().debug( "Copying gdbServer to " + destFile );
                     FileUtils.copyFile( gdbServerFile, destFile );
                 }
                 else
@@ -905,14 +840,6 @@ public class ApkMojo extends AbstractAndroidMojo
             throw new MojoExecutionException( "Error while copying gdbserver: " + e.getMessage(), e );
         }
 
-    }
-
-    private File getFinalDestinationDirectoryFor( Artifact resolvedArtifact, File destinationDirectory,
-                                                  String ndkArchitecture )
-    {
-        File finalDestinationDirectory = new File( destinationDirectory, ndkArchitecture + "/" );
-        finalDestinationDirectory.mkdirs();
-        return finalDestinationDirectory;
     }
 
     private void copyLocalNativeLibraries( final File localNativeLibrariesDirectory, final File destinationDirectory )
@@ -1009,6 +936,9 @@ public class ApkMojo extends AbstractAndroidMojo
         }
     }
 
+    /**
+     * Used to populated the {@link #apkMetaInf} attribute via reflection.
+     */
     private MetaInf getDefaultMetaInf()
     {
         // check for deprecated first

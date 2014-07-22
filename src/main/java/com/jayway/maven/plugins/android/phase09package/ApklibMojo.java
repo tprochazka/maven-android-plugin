@@ -28,6 +28,10 @@ import org.apache.maven.artifact.Artifact;
 import org.apache.maven.model.Resource;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
+import org.apache.maven.plugins.annotations.LifecyclePhase;
+import org.apache.maven.plugins.annotations.Mojo;
+import org.apache.maven.plugins.annotations.Parameter;
+import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.codehaus.plexus.archiver.ArchiverException;
 import org.codehaus.plexus.archiver.jar.JarArchiver;
 import org.codehaus.plexus.archiver.util.DefaultFileSet;
@@ -47,10 +51,8 @@ import static com.jayway.maven.plugins.android.common.AndroidExtension.APKLIB;
  * apklib files do not generate deployable artifacts.
  *
  * @author nmaiorana@gmail.com
- * @goal apklib
- * @phase package
- * @requiresDependencyResolution compile
  */
+@Mojo( name = "apklib", defaultPhase = LifecyclePhase.PACKAGE, requiresDependencyResolution = ResolutionScope.COMPILE )
 public class ApklibMojo extends AbstractAndroidMojo
 {
     /**
@@ -60,48 +62,35 @@ public class ApklibMojo extends AbstractAndroidMojo
     public static final String NATIVE_LIBRARIES_FOLDER = "libs";
     
     /**
-     * Build folder to place built native libraries into
-     *
-     * @parameter property="android.ndk.build.ndk-output-directory"
-     * default-value="${project.build.directory}/ndk-libs"
-     */
-    private File ndkOutputDirectory;
-    
-    /**
      * <p>Classifier to add to the artifact generated. If given, the artifact will be an attachment instead.</p>
-     *
-     * @parameter
      */
+    @Parameter
     private String classifier;
 
     /**
      * Specifies the application makefile to use for the build (if other than the default Application.mk).
-     *
-     * @parameter
      */
+    @Parameter
     @PullParameter
     private String applicationMakefile;
 
     /**
      * Defines the architecture for the NDK build
-     *
-     * @parameter property="android.ndk.build.architecture"
      */
+    @Parameter( property = "android.ndk.build.architecture" )
     @PullParameter
     private String ndkArchitecture;
 
     /**
      * Specifies the classifier with which the artifact should be stored in the repository
-     *
-     * @parameter property="android.ndk.build.native-classifier"
      */
+    @Parameter( property = "android.ndk.build.native-classifier" )
     @PullParameter
     private String ndkClassifier;
     
     private List<String> sourceFolders = new ArrayList<String>();
 
     /**
-     *
      * @throws MojoExecutionException
      * @throws MojoFailureException
      */
@@ -139,12 +128,7 @@ public class ApklibMojo extends AbstractAndroidMojo
         }
     }
 
-    /**
-     *
-     * @return
-     * @throws MojoExecutionException
-     */
-    protected File createApkLibraryFile() throws MojoExecutionException
+    private File createApkLibraryFile() throws MojoExecutionException
     {
         final File apklibrary = new File( project.getBuild().getDirectory(),
                 project.getBuild().getFinalName() + "." + APKLIB );
@@ -210,10 +194,10 @@ public class ApklibMojo extends AbstractAndroidMojo
                 String[] ndkArchitectures = NativeHelper.getNdkArchitectures( ndkArchitecture,
                                                                               applicationMakefile,
                                                                               project.getBasedir() );
-                for ( String ndkArchitecture : ndkArchitectures )
+                for ( String architecture : ndkArchitectures )
                 {
-                    final File ndkLibsDirectory = new File( ndkOutputDirectory, ndkArchitecture );
-                    addSharedLibraries( jarArchiver, ndkLibsDirectory, ndkArchitecture );
+                    final File ndkLibsDirectory = new File( ndkOutputDirectory, architecture );
+                    addSharedLibraries( jarArchiver, ndkLibsDirectory, architecture );
                 
                     // Add native library dependencies
                     // FIXME: Remove as causes duplicate libraries when building final APK if this set includes
@@ -328,9 +312,9 @@ public class ApklibMojo extends AbstractAndroidMojo
      * 
      * @param jarArchiver The jarArchiver to add files to
      * @param directory   The directory to scan for .so files
-     * @param ndkArchitecture      The prefix for where in the jar the .so files will go.
+     * @param architecture      The prefix for where in the jar the .so files will go.
      */
-    protected void addSharedLibraries( JarArchiver jarArchiver, File directory, String ndkArchitecture )
+    protected void addSharedLibraries( JarArchiver jarArchiver, File directory, String architecture )
     {
         getLog().debug( "Searching for shared libraries in " + directory );
         File[] libFiles = directory.listFiles( new FilenameFilter()
@@ -345,7 +329,7 @@ public class ApklibMojo extends AbstractAndroidMojo
         {
             for ( File libFile : libFiles )
             {
-                String dest = "libs/" + ndkArchitecture + "/" + libFile.getName();
+                String dest = NATIVE_LIBRARIES_FOLDER + "/" + architecture + "/" + libFile.getName();
                 getLog().debug( "Adding " + libFile + " as " + dest );
                 jarArchiver.addFile( libFile, dest );
             }

@@ -46,6 +46,8 @@ import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecution;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
+import org.apache.maven.plugins.annotations.Component;
+import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.project.MavenProjectHelper;
 import org.apache.maven.shared.dependency.graph.DependencyGraphBuilder;
@@ -115,202 +117,129 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
      * </pre>
      * <p>or just with a hardcoded absolute path. The parameters can also be configured from command-line with parameter
      * <code>-Dandroid.ndk.path</code>.</p>
-     *
-     * @parameter
      */
+    @Parameter
     @ConfigPojo( prefix = "ndk" )
     private Ndk ndk;
 
     /**
      * The maven project.
-     *
-     * @parameter default-value="${project}"
-     * @required
-     * @readonly
      */
+    @Component
     protected MavenProject project;
 
     /**
      * The maven session.
-     *
-     * @parameter default-value="${session}"
-     * @required
-     * @readonly
      */
+    @Component
     protected MavenSession session;
 
     /**
-     * @parameter default-value="${mojoExecution}"
-     * @readonly
-     * @required
-     *
      */
+    @Component
     protected MojoExecution execution;
 
     /**
      * The java sources directory.
-     *
-     * @parameter default-value="${project.build.sourceDirectory}"
-     * @readonly
      */
+    @Parameter( defaultValue = "${project.build.sourceDirectory}", readonly = true )
     protected File sourceDirectory;
 
     /**
      * The java target directory. Ie target/classes.
-     *
-     * @parameter default-value="${project.build.directory}"
-     * @readonly
      */
+    @Parameter( defaultValue = "${project.build.directory}", readonly = true )
     protected File targetDirectory;
 
     /**
      * The android resources directory.
-     *
-     * @parameter default-value="${project.basedir}/res"
      */
+    @Parameter( defaultValue = "${project.basedir}/res", alias = "resourceDirectoryAlias" )
     protected File resourceDirectory;
 
     /**
-     * The android resources directory.
-     *
-     * @parameter property="resourceDirectoryAlias"
+     * Override default generated folder containing R.java
      */
-    protected File resourceDirectoryAlias;
-
-    /**
-     * The alias for <code>resourceDirectory</code> parameter.
-     * It is should be used to avoid IDEA IDE to relocate <code>res</code> folder location.
-     * If you need it only for maven use.
-     *
-     * @parameter alias="resourceDirectoryAlias" default-value="${project.basedir}/res"
-     */
-    public void setResourceDirectoryAlias( File file )
-    {
-        resourceDirectory = file;
-        resourceDirectoryAlias = file;
-    }
-
+    @Parameter( property = "android.genDirectory", defaultValue = "${project.build.directory}/generated-sources/r" )
+    protected File genDirectory;
 
     /**
      * <p>Root folder containing native libraries to include in the application package.</p>
-     *
-     * @parameter property="android.nativeLibrariesDirectory" default-value="${project.basedir}/libs"
      */
+    @Parameter( property = "android.nativeLibrariesDirectory", defaultValue = "${project.basedir}/libs" )
     protected File nativeLibrariesDirectory;
+
+    /**
+     * Folder in which the ndk libraries are collected ready for packaging.
+     */
+    @Parameter( defaultValue = "${project.build.directory}/ndk-libs", readonly = true )
+    protected File ndkOutputDirectory;
 
 
     /**
      * The android resources overlay directory. This will be overridden
      * by resourceOverlayDirectories if present.
-     *
-     * @parameter default-value="${project.basedir}/res-overlay"
      */
+    @Parameter( defaultValue = "${project.basedir}/res-overlay" )
     protected File resourceOverlayDirectory;
 
     /**
      * The android resources overlay directories. If this is specified,
      * the {@link #resourceOverlayDirectory} parameter will be ignored.
-     *
-     * @parameter
      */
+    @Parameter
     protected File[] resourceOverlayDirectories;
 
     /**
      * The android assets directory.
-     *
-     * @parameter default-value="${project.basedir}/assets"
      */
+    @Parameter( defaultValue = "${project.basedir}/assets", alias = "assetsDirectoryAlias" )
     protected File assetsDirectory;
 
     /**
-     * The android assets directory.
-     *
-     * @parameter property="assetsDirectoryAlias"
-     */
-    protected File assetsDirectoryAlias;
-
-    /**
-     * The alias for <code>resourceDirectory</code> parameter.
-     * It is should be used to avoid IDEA IDE to relocate <code>res</code> folder location.
-     * If you need it only for maven use.
-     *
-     * @parameter alias="assetsDirectoryAlias" default-value="${project.basedir}/assets"
-     */
-    public void setAssetsDirectoryAlias( File file )
-    {
-        assetsDirectory = file;
-        assetsDirectoryAlias = file;
-    }
-
-
-    /**
      * Source <code>AndroidManifest.xml</code> file to copy into the {@link #androidManifestFile} location.
-     *
-     * @parameter property="source.manifestFile"
      */
+    @Parameter( property = "source.manifestFile" )
     protected File sourceManifestFile;
 
     
     /**
      * The <code>AndroidManifest.xml</code> file.
-     *
-     * @parameter property="android.manifestFile" default-value="${project.basedir}/AndroidManifest.xml"
      */
+    @Parameter(
+            property = "android.manifestFile",
+            defaultValue = "${project.basedir}/AndroidManifest.xml",
+            alias = "androidManifestFileAlias"
+    )
     protected File androidManifestFile;
-
-    /**
-     * The <code>AndroidManifest.xml</code> file.
-     *
-     * @parameter property="androidManifestFileAlias"
-     */
-    protected File androidManifestFileAlias;
-
-
-    /**
-     * The alias for <code>AndroidManifest</code> parameter.
-     * It is should be used to avoid IDEA IDE to relocate <code>AndroidManifest.xml</code> file location.
-     * If you need it only for maven use.
-     *
-     * @parameter alias="androidManifestFileAlias" default-value="${project.basedir}/AndroidManifest.xml"
-     */
-    public void setAndroidManifestFileAlias( File file )
-    {
-        androidManifestFile = file;
-        androidManifestFileAlias = file;
-    }
 
     /**
      * <p>A possibly new package name for the application. This value will be passed on to the aapt
      * parameter --rename-manifest-package. Look to aapt for more help on this. </p>
-     *
-     * @parameter property="android.renameManifestPackage"
      */
+    @Parameter( property = "android.renameManifestPackage" )
     protected String renameManifestPackage;
 
-    /**
-     * @parameter default-value="${project.build.directory}/generated-sources/extracted-dependencies"
-     * @readonly
-     */
+    @Parameter( defaultValue = "${project.build.directory}/generated-sources/extracted-dependencies", readonly = true )
     protected File extractedDependenciesDirectory;
 
-    /**
-     * @parameter default-value="${project.build.directory}/generated-sources/extracted-dependencies/src/main/java"
-     * @readonly
-     */
+    @Parameter(
+            defaultValue = "${project.build.directory}/generated-sources/extracted-dependencies/src/main/java",
+            readonly = true
+    )
     protected File extractedDependenciesJavaSources;
-    /**
-     * @parameter default-value="${project.build.directory}/generated-sources/extracted-dependencies/src/main/resources"
-     * @readonly
-     */
+
+    @Parameter(
+            defaultValue = "${project.build.directory}/generated-sources/extracted-dependencies/src/main/resources",
+            readonly = true
+    )
     protected File extractedDependenciesJavaResources;
 
     /**
      * The combined assets directory. This will contain both the assets found in "assets" as well as any assets
      * contained in a apksources, apklib or aar dependencies.
-     *
-     * @parameter default-value="${project.build.directory}/generated-sources/combined-assets"
-     * @readonly
      */
+    @Parameter( defaultValue = "${project.build.directory}/generated-sources/combined-assets", readonly = true )
     protected File combinedAssets;
 
     /**
@@ -319,9 +248,8 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
      * connect to all emulators connected. Multiple devices will be iterated over in terms of goals to run. All
      * device interaction goals support this so you can e.. deploy the apk to all attached emulators and devices.
      * Goals supporting this are devices, deploy, undeploy, redeploy, pull, push and instrument.
-     *
-     * @parameter property="android.device"
      */
+    @Parameter( property = "android.device" )
     protected String device;
 
     /**
@@ -338,9 +266,8 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
      * </pre>
      * <p>This parameter can also be configured from command-line with
      * parameter <code>-Dandroid.devices=usb,emulator</code>.</p>
-     *
-     * @parameter property="android.devices"
      */
+    @Parameter( property = "android.devices" )
     protected String[] devices;
     
     /**
@@ -348,9 +275,8 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
      * 
      * <p>This parameter can also be configured from command-line with
      * parameter <code>-Dandroid.deviceThreads=2</code>.</p>
-     *
-     * @parameter property="android.deviceThreads"
      */
+    @Parameter( property = "android.deviceThreads" )
     protected int deviceThreads;
 
     /**
@@ -366,9 +292,8 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
      *     &lt;ip&gt;127.0.0.1:5556&lt;/ip&gt;
      * &lt;/ips&gt;
      * </pre>
-     *
-     * @parameter property="android.ips"
      */
+    @Parameter( property = "android.ips" )
     protected String[] ips;
 
     /**
@@ -376,70 +301,54 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
      * configurations for a certain type. For example, specifying <code>hdpi</code> will exclude all resource folders
      * with the <code>mdpi</code> or <code>ldpi</code> modifiers, but won't affect language or orientation modifiers.
      * For more information about this option, look in the aapt command line help.
-     *
-     * @parameter property="android.configurations"
      */
+    @Parameter( property = "android.configurations" )
     protected String configurations;
 
     /**
      * A list of extra arguments that must be passed to aapt.
-     *
-     * @parameter property="android.aaptExtraArgs"
      */
+    @Parameter( property = "android.aaptExtraArgs" )
     protected String[] aaptExtraArgs;
 
     /**
      * Activate verbose output for the aapt execution in Maven debug mode. Defaults to "false"
-     *
-     * @parameter property="android.aaptVerbose"
      */
+    @Parameter( property = "android.aaptVerbose" )
     protected boolean aaptVerbose;
 
     /**
      * Automatically create a ProGuard configuration file that will guard Activity classes and the like that are
      * defined in the AndroidManifest.xml. This files is then automatically used in the proguard mojo execution, 
      * if enabled.
-     *
-     * @parameter property="android.proguardFile"
      */
+    @Parameter( property = "android.proguardFile" )
     protected File proguardFile;
 
     /**
      * Decides whether the Apk should be generated or not. If set to false, dx and apkBuilder will not run. This is
      * probably most useful for a project used to generate apk sources to be inherited into another application
      * project.
-     *
-     * @parameter property="android.generateApk" default-value="true"
      */
+    @Parameter( property = "android.generateApk", defaultValue = "true" )
     protected boolean generateApk;
 
-    /**
-     * @component
-     * @required
-     * @readonly
-     */
+    @Component
     private ArtifactResolver artifactResolver;
 
-    /**
-     * @component
-     * @required
-     * @readonly
-     */
+    @Component
     private ArtifactHandler artifactHandler;
 
     /**
      * Generates R.java into a different package.
-     *
-     * @parameter property="android.customPackage"
      */
+    @Parameter( property = "android.customPackage" )
     protected String customPackage;
 
     /**
      * Maven ProjectHelper.
-     *
-     * @component
-     * @readonly
      */
+    @Component
     protected MavenProjectHelper projectHelper;
 
     /**
@@ -467,28 +376,23 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
      * </pre>
      * <p>or just with a hard-coded absolute path. The parameters can also be configured from command-line with
      * parameters <code>-Dandroid.sdk.path</code> and <code>-Dandroid.sdk.platform</code>.</p>
-     *
-     * @parameter
      */
+    @Parameter
     private Sdk sdk;
 
     /**
      * <p>Parameter designed to pick up <code>-Dandroid.sdk.path</code> in case there is no pom with an
      * <code>&lt;sdk&gt;</code> configuration tag.</p>
      * <p>Corresponds to {@link com.jayway.maven.plugins.android.configuration.Sdk#path}.</p>
-     *
-     * @parameter property="android.sdk.path"
-     * @readonly
      */
+    @Parameter( property = "android.sdk.path", readonly = true )
     private File sdkPath;
 
     /**
      * <p>Parameter designed to pick up environment variable <code>ANDROID_HOME</code> in case
      * <code>android.sdk.path</code> is not configured.</p>
-     *
-     * @parameter default-value="${env.ANDROID_HOME}"
-     * @readonly
      */
+    @Parameter( defaultValue = "${env.ANDROID_HOME}", readonly = true )
     private String envAndroidHome;
 
     /**
@@ -500,10 +404,8 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
      * <p>Parameter designed to pick up <code>-Dandroid.sdk.platform</code> in case there is no pom with an
      * <code>&lt;sdk&gt;</code> configuration tag.</p>
      * <p>Corresponds to {@link com.jayway.maven.plugins.android.configuration.Sdk#platform}.</p>
-     *
-     * @parameter property="android.sdk.platform"
-     * @readonly
      */
+    @Parameter( property = "android.sdk.platform", readonly = true )
     private String sdkPlatform;
 
     /**
@@ -517,20 +419,16 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
      * <p>It is useful to keep this set to <code>true</code> at all times, because if an apk with the same package was
      * previously signed with a different keystore, and deployed to the device, deployment will fail becuase your
      * keystore is different.</p>
-     *
-     * @parameter default-value=false
-     * property="android.undeployBeforeDeploy"
      */
+    @Parameter( property = "android.undeployBeforeDeploy", defaultValue = "false" )
     protected boolean undeployBeforeDeploy;
 
     /**
      * <p>Whether to attach the normal .jar file to the build, so it can be depended on by for example integration-tests
      * which may then access {@code R.java} from this project.</p>
      * <p>Only disable it if you know you won't need it for any integration-tests. Otherwise, leave it enabled.</p>
-     *
-     * @parameter default-value=true
-     * property="android.attachJar"
      */
+    @Parameter( property = "android.attachJar", defaultValue = "true" )
     protected boolean attachJar;
 
     /**
@@ -538,34 +436,29 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
      * them in their builds.</p>
      * <p>Enabling this setting is only required if this project's source code and/or res(ources) will be included in
      * other projects, using the Maven &lt;dependency&gt; tag.</p>
-     *
-     * @parameter default-value=false
-     * property="android.attachSources"
      */
+    @Parameter( property = "android.attachSources", defaultValue = "false" )
     protected boolean attachSources;
 
     /**
      * <p>Parameter designed to pick up <code>-Dandroid.ndk.path</code> in case there is no pom with an
      * <code>&lt;ndk&gt;</code> configuration tag.</p>
      * <p>Corresponds to {@link com.jayway.maven.plugins.android.configuration.Ndk#path}.</p>
-     *
-     * @parameter property="android.ndk.path"
-     * @readonly
      */
+    @Parameter( property = "android.ndk.path", readonly = true )
     private File ndkPath;
 
     /**
      * Whether to create a release build (default is false / debug build). This affect BuildConfig generation 
      * and apk generation at this stage, but should probably affect other aspects of the build.
-     * @parameter property="android.release" default-value="false"
      */
+    @Parameter( property = "android.release", defaultValue = "false" )
     protected boolean release;
 
     /**
      * The timeout value for an adb connection in milliseconds.
-     *
-     * @parameter property="android.adb.connectionTimeout" default-value="5000"
      */
+    @Parameter( property = "android.adb.connectionTimeout", defaultValue = "5000" )
     protected int adbConnectionTimeout;
 
     private UnpackedLibHelper unpackedLibHelper;
@@ -582,11 +475,7 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
     private static boolean adbInitialized = false;
 
     @SuppressWarnings( "unused" )
-    /**
-     * @component
-     * @required
-     * @readonly
-     */
+    @Component
     protected DependencyGraphBuilder dependencyGraphBuilder;
 
 
@@ -658,8 +547,6 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
      * Initialize the Android Debug Bridge and wait for it to start. Does not reinitialize it if it has
      * already been initialized (that would through and IllegalStateException...). Synchronized sine
      * the init call in the library is also synchronized .. just in case.
-     *
-     * @return
      */
     protected AndroidDebugBridge initAndroidDebugBridge() throws MojoExecutionException
     {
@@ -681,8 +568,6 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
     /**
      * Run a wait loop until adb is connected or trials run out. This method seems to work more reliably then using a
      * listener.
-     *
-     * @param adb
      */
     private void waitUntilConnected( AndroidDebugBridge adb )
     {
@@ -708,9 +593,6 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
 
     /**
      * Wait for the Android Debug Bridge to return an initial device list.
-     *
-     * @param androidDebugBridge
-     * @throws MojoExecutionException
      */
     protected void waitForInitialDeviceList( final AndroidDebugBridge androidDebugBridge ) throws MojoExecutionException
     {
@@ -1101,12 +983,6 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
         return extractPackageNameFromAndroidManifest( manifest );
     }
 
-    /**
-     *
-     * @param manifestFile
-     * @return
-     * @throws MojoExecutionException
-     */
     protected String extractPackageNameFromAndroidManifest( File manifestFile )
     {
         return VariantConfiguration.getManifestPackage( manifestFile );
@@ -1123,23 +999,23 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
     /**
      * Attempts to find the instrumentation test runner from inside the AndroidManifest.xml file.
      *
-     * @param androidManifestFile the AndroidManifest.xml file to inspect.
+     * @param manifestFile the AndroidManifest.xml file to inspect.
      * @return the instrumentation test runner declared in AndroidManifest.xml, or {@code null} if it is not declared.
      * @throws MojoExecutionException
      */
-    protected String extractInstrumentationRunnerFromAndroidManifest( File androidManifestFile )
+    protected String extractInstrumentationRunnerFromAndroidManifest( File manifestFile )
             throws MojoExecutionException
     {
         final URL xmlURL;
         try
         {
-            xmlURL = androidManifestFile.toURI().toURL();
+            xmlURL = manifestFile.toURI().toURL();
         }
         catch ( MalformedURLException e )
         {
             throw new MojoExecutionException(
                     "Error while trying to figure out instrumentation runner from inside AndroidManifest.xml file "
-                            + androidManifestFile, e );
+                            + manifestFile, e );
         }
         final DocumentContainer documentContainer = new DocumentContainer( xmlURL );
         final Object instrumentationRunner;
@@ -1238,11 +1114,6 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
         return new AndroidSdk( chosenSdkPath, chosenSdkPlatform );
     }
 
-    /**
-     *
-     * @return
-     * @throws MojoExecutionException
-     */
     private String getAndroidHomeOrThrow() throws MojoExecutionException
     {
         final String androidHome = System.getenv( ENV_ANDROID_HOME );
@@ -1322,7 +1193,7 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
      */
     protected AndroidNdk getAndroidNdk() throws MojoExecutionException
     {
-        File chosenNdkPath = null;
+        File chosenNdkPath;
         // There is no <ndk> tag in the pom.
         if ( ndkPath != null )
         {
@@ -1342,11 +1213,6 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
     }
 
 
-    /**
-     *
-     * @return
-     * @throws MojoExecutionException
-     */
     private String getAndroidNdkHomeOrThrow() throws MojoExecutionException
     {
         final String androidHome = System.getenv( ENV_ANDROID_NDK_HOME );
@@ -1361,8 +1227,7 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
     }
 
     /**
-     * Get the resource directories if defined or the resource directory
-     * @return
+     * @return the resource directories if defined or the resource directory.
      */
     public File[] getResourceOverlayDirectories()
     {

@@ -16,12 +16,16 @@
  */
 package com.jayway.maven.plugins.android;
 
+import com.android.ddmlib.AdbCommandRejectedException;
 import com.android.ddmlib.AndroidDebugBridge;
 import com.android.ddmlib.IDevice;
+import com.android.ddmlib.ShellCommandUnresponsiveException;
+import com.android.ddmlib.TimeoutException;
 import com.jayway.maven.plugins.android.common.DeviceHelper;
 import com.jayway.maven.plugins.android.configuration.Emulator;
 import org.apache.commons.lang.StringUtils;
 import org.apache.maven.plugin.MojoExecutionException;
+import org.apache.maven.plugins.annotations.Parameter;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -59,6 +63,37 @@ public abstract class AbstractEmulatorMojo extends AbstractAndroidMojo
     private static final int MILLIS_TO_SLEEP_BETWEEN_DEVICE_ONLINE_CHECKS = 200;
 
     /**
+     * Even if the device finished booting, there are usually still some things going on in the background,
+     * polling at a higher frequency (un-cached!) is most probably useless
+     */
+    private static final int MILLIS_TO_SLEEP_BETWEEN_SYS_BOOTED_CHECKS = 5000;
+
+    /**
+     * Names of device properties related to the boot state
+     */
+    private static final String[] BOOT_INDICATOR_PROP_NAMES
+            = { "dev.bootcomplete", "sys.boot_completed", "init.svc.bootanim" };
+
+    /**
+     * Target values for properties listed in {@link #BOOT_INDICATOR_PROP_NAMES}, which indicate 'boot completed'
+     */
+    private static final String[] BOOT_INDICATOR_PROP_TARGET_VALUES = { "1", "1", "stopped" };
+
+    /**
+     * Determines, which of the properties listed in {@link #BOOT_INDICATOR_PROP_NAMES} are required
+     * to reach the target value in {@link #BOOT_INDICATOR_PROP_TARGET_VALUES} in order to stop polling.
+     * Since one cannot be picky about what is used as a 'booted' indicator, any 'signalled' property will
+     * be used as an indicator in case of a timeout.
+     */
+    private static final boolean[] BOOT_INDICATOR_PROP_WAIT_FOR = { false, false, true };
+
+    /**
+     * Warning threshold for narrow timeout values
+     * TODO Improve; e.g. with an additional percentage threshold
+     */
+    private static final long START_TIMEOUT_REMAINING_TIME_WARNING_THRESHOLD = 5000; //[ms]
+
+    /**
      * Configuration for the emulator goals. Either use the plugin configuration like this
      * <pre>
      * &lt;emulator&gt;
@@ -71,32 +106,30 @@ public abstract class AbstractEmulatorMojo extends AbstractAndroidMojo
      * or configure as properties  on the command line as android.emulator.avd, android.emulator.wait,
      * android.emulator.options and android.emulator.executable or in pom or settings file as emulator.avd,
      * emulator.wait and emulator.options.
-     *
-     * @parameter
      */
+    @Parameter
     private Emulator emulator;
 
     /**
      * Name of the Android Virtual Device (emulatorAvd) that will be started by the emulator. Default value is "Default"
      *
-     * @parameter property="android.emulator.avd"
      * @see com.jayway.maven.plugins.android.configuration.Emulator#avd
      */
+    @Parameter( property = "android.emulator.avd" )
     private String emulatorAvd;
 
     /**
      * Unlock the emulator after it is started.
-     * 
-     * @parameter property="android.emulatorUnlock" default-value=false
      */
+    @Parameter( property = "android.emulatorUnlock", defaultValue = "false" )
     private boolean emulatorUnlock;
 
     /**
      * Wait time for the emulator start up.
      *
-     * @parameter property="android.emulator.wait"
      * @see com.jayway.maven.plugins.android.configuration.Emulator#wait
      */
+    @Parameter( property = "android.emulator.wait" )
     private String emulatorWait;
 
     /**
@@ -104,18 +137,18 @@ public abstract class AbstractEmulatorMojo extends AbstractAndroidMojo
      * options desired to the invocation of the emulator. Use emulator -help for more details. An example would be
      * "-no-skin".
      *
-     * @parameter property="android.emulator.options"
      * @see com.jayway.maven.plugins.android.configuration.Emulator#options
      */
+    @Parameter( property = "android.emulator.options" )
     private String emulatorOptions;
 
 
     /**
      * Override default emulator executable. Default uses just "emulator".
      *
-     * @parameter property="android.emulator.executable"
      * @see com.jayway.maven.plugins.android.configuration.Emulator#executable
      */
+    @Parameter( property = "android.emulator.executable" )
     private String emulatorExecutable;
 
     /**
@@ -205,8 +238,8 @@ public abstract class AbstractEmulatorMojo extends AbstractAndroidMojo
 
                     getLog().info( START_EMULATOR_WAIT_MSG + parsedWait );
                     // wait for the emulator to start up
-                    boolean connected = waitUntilDeviceIsConnectedOrTimeout( androidDebugBridge );
-                    if ( connected )
+                    boolean booted = waitUntilDeviceIsBootedOrTimeout( androidDebugBridge );
+                    if ( booted )
                     {
                         getLog().info( "Emulator is up and running." );
                         unlockEmulator( androidDebugBridge );
@@ -263,18 +296,37 @@ public abstract class AbstractEmulatorMojo extends AbstractAndroidMojo
         }
     }
 
-    boolean waitUntilDeviceIsConnectedOrTimeout( AndroidDebugBridge androidDebugBridge )
+    // TODO Separate timeout params?: New param 'android.emulator.bootTimeout', rename param 'android.emulator.wait' to 'android.emulator.connectTimeout'
+    // TODO Higher default timeout(s)?: Perhaps at least for emulators, since they are probably booted or even created on demand
+    boolean waitUntilDeviceIsBootedOrTimeout( AndroidDebugBridge androidDebugBridge )
             throws MojoExecutionException
     {
-        long timeout = System.currentTimeMillis() + new Long( parsedWait );
-        while ( System.currentTimeMillis() < timeout )
+        final long timeout = System.currentTimeMillis() + Long.parseLong( parsedWait );
+        IDevice myEmulator;
+        boolean devOnline;
+        boolean sysBootCompleted = false;
+        long remainingTime = 0;
+
+        //If necessary, wait until the device is online or the specified timeout is reached
+        boolean waitingForConnection = false;
+        do
         {
-            IDevice myEmulator = findExistingEmulator( Arrays.asList( androidDebugBridge.getDevices() ) );
-            if ( ( myEmulator != null ) && ( myEmulator.isOnline() ) )
+            myEmulator = findExistingEmulator( Arrays.asList( androidDebugBridge.getDevices() ) );
+            devOnline = ( myEmulator != null ) && ( myEmulator.isOnline() );
+            if ( devOnline )
             {
-                return true;
+                break;
+            }
+            else
+            {
+                myEmulator = null;
             }
 
+            if ( !waitingForConnection )
+            {
+                waitingForConnection = true;
+                getLog().info( "Waiting for the device to go online..." );
+            }
             try
             {
                 Thread.sleep( MILLIS_TO_SLEEP_BETWEEN_DEVICE_ONLINE_CHECKS );
@@ -283,8 +335,118 @@ public abstract class AbstractEmulatorMojo extends AbstractAndroidMojo
             {
                 throw new MojoExecutionException( "Interrupted waiting for device to become ready" );
             }
+
+            remainingTime = timeout - System.currentTimeMillis();
+        } while ( remainingTime > 0 );
+
+        if ( devOnline )
+        {
+            boolean waitingForBootCompleted = false;
+            final String[] bootIndicatorPropValues = new String[ BOOT_INDICATOR_PROP_NAMES.length ];
+            boolean anyTargetStateReached = false;
+            boolean requiredTargetStatesReached = false;
+
+            // If necessary, wait until the device's system is booted or the specified timeout is reached
+            do
+            {
+                try
+                {
+                    // update state flags...
+                    anyTargetStateReached = false;
+                    requiredTargetStatesReached = true;
+
+                    for ( int indicatorProp = 0; indicatorProp < BOOT_INDICATOR_PROP_NAMES.length; ++indicatorProp )
+                    {
+                        // issue an un-cached property request
+                        boolean targetStateReached =
+                                (
+                                        bootIndicatorPropValues[indicatorProp] != null
+                                                &&  bootIndicatorPropValues[indicatorProp]
+                                                .equals( BOOT_INDICATOR_PROP_TARGET_VALUES[indicatorProp] )
+                                );
+                        if ( !targetStateReached )
+                        {
+                            // (re)query
+                            bootIndicatorPropValues[indicatorProp] =
+                                    myEmulator.getPropertySync( BOOT_INDICATOR_PROP_NAMES[indicatorProp] );
+                            targetStateReached =
+                                    (
+                                            bootIndicatorPropValues[indicatorProp] != null
+                                                    &&  bootIndicatorPropValues[indicatorProp]
+                                                    .equals( BOOT_INDICATOR_PROP_TARGET_VALUES[indicatorProp] )
+                                    );
+                        }
+                        anyTargetStateReached |= targetStateReached;
+                        requiredTargetStatesReached &=
+                                BOOT_INDICATOR_PROP_WAIT_FOR[indicatorProp] ? targetStateReached : true;
+
+                        getLog().debug( BOOT_INDICATOR_PROP_NAMES[indicatorProp]
+                                        + " : " +  bootIndicatorPropValues[indicatorProp]
+                                        + ( targetStateReached ? " == " : " != " )
+                                        + BOOT_INDICATOR_PROP_TARGET_VALUES[indicatorProp]
+                                        + " [" + ( targetStateReached ? "OK" : "PENDING" ) + ']'
+                        );
+                    }
+                }
+                catch ( TimeoutException e )
+                {
+                    // TODO Abort here? Not too problematic since timeouts are used
+                    // optimistically ignore this exception and continue...
+                }
+                catch ( AdbCommandRejectedException e )
+                {
+                    // TODO Abort here? Not too problematic since timeouts are used
+                    // optimistically ignore this exception and continue...
+                }
+                catch ( ShellCommandUnresponsiveException e )
+                {
+                    // TODO Abort here? Not too problematic since timeouts are used
+                    // optimistically ignore this exception and continue...
+                }
+                catch ( IOException e )
+                {
+                    throw new MojoExecutionException( "IO error during status request" , e );
+                }
+
+                remainingTime = timeout - System.currentTimeMillis();
+
+                if ( remainingTime > 0 )
+                {
+                    // consider the boot process to be finished, if all required states have been reached
+                    sysBootCompleted = requiredTargetStatesReached;
+                }
+                else
+                {
+                    // on timeout, use any indicator
+                    sysBootCompleted = anyTargetStateReached;
+                }
+
+                if ( remainingTime > 0 && !sysBootCompleted )
+                {
+                    if ( !waitingForBootCompleted )
+                    {
+                        waitingForBootCompleted = true;
+                        getLog().info( "Waiting for the device to finish booting..." );
+                    }
+
+                    try
+                    {
+                        Thread.sleep( MILLIS_TO_SLEEP_BETWEEN_SYS_BOOTED_CHECKS );
+                    }
+                    catch ( InterruptedException e )
+                    {
+                        throw new MojoExecutionException(
+                                "Interrupted while waiting for the device to finish booting" );
+                    }
+                }
+            } while ( !sysBootCompleted && remainingTime > 0 );
+            if ( sysBootCompleted && remainingTime < START_TIMEOUT_REMAINING_TIME_WARNING_THRESHOLD )
+            {
+                getLog().warn(
+                        "Boot indicators have been signalled, but remaining time was " + remainingTime + " ms" );
+            }
         }
-        return false;
+        return sysBootCompleted;
     }
 
     private IDevice findExistingEmulator( List<IDevice> devices )
