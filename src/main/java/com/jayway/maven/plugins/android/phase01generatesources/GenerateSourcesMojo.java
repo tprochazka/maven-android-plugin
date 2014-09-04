@@ -24,14 +24,13 @@ import com.jayway.maven.plugins.android.CommandExecutor;
 import com.jayway.maven.plugins.android.ExecutionException;
 import com.jayway.maven.plugins.android.common.AaptCommandBuilder;
 import com.jayway.maven.plugins.android.common.AaptCommandBuilder.AaptPackageCommandBuilder;
+import com.jayway.maven.plugins.android.common.DependencyResolver;
 import com.jayway.maven.plugins.android.common.FileRetriever;
-import com.jayway.maven.plugins.android.common.ZipExtractor;
 import com.jayway.maven.plugins.android.configuration.BuildConfigConstant;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.maven.artifact.Artifact;
-import org.apache.maven.execution.MavenSession;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.Component;
@@ -91,7 +90,6 @@ import static com.jayway.maven.plugins.android.common.AndroidExtension.APKSOURCE
 )
 public class GenerateSourcesMojo extends AbstractAndroidMojo
 {
-
     /**
      * <p>
      * Override default merging. You must have SDK Tools r20+
@@ -173,6 +171,17 @@ public class GenerateSourcesMojo extends AbstractAndroidMojo
     protected boolean mergeManifests;
 
     /**
+     * <p>Whether to produce a warning if there is an aar dependency that has an apklib artifact in its dependency
+     * tree. The combination of aar library including or depending on an apklib has been deprecated and may not be
+     * supported by future plugin versions. Traversing the dependency graph is done for all project dependencies
+     * present in build classpath.</p>
+     * <p/>
+     * <p>It is recommended to keep this set to <code>true</code> to catch possible issues as soon as possible.</p>
+     */
+    @Parameter( defaultValue = "true" )
+    protected boolean warnOnApklibDependencies;
+
+    /**
      * Whether to fail the build if one of the dependencies and/or the project duplicate a layout file.
      *
      * Such a scenario generally means that the build will fail with a compilation error due to missing resource files.
@@ -213,11 +222,40 @@ public class GenerateSourcesMojo extends AbstractAndroidMojo
     @Parameter( property = "android.buildConfigConstants", readonly = true )
     protected BuildConfigConstant[] buildConfigConstants;
 
-    @Component
-    private MavenSession mavenSession;
-
+    /**
+     */
     @Component
     private RepositorySystem repositorySystem;
+
+    /**
+     * Pre AMP-4 AndroidManifest file.
+     */
+    @Parameter( readonly = true, defaultValue = "${project.basedir}/AndroidManifest.xml" )
+    private File androidManifestFilePre4;
+
+    /**
+     * Pre AMP-4 android resources folder.
+     */
+    @Parameter( readonly = true, defaultValue = "${project.basedir}/res" )
+    private File resourceDirectoryPre4;
+
+    /**
+     * Pre AMP-4 android assets directory.
+     */
+    @Parameter( readonly = true, defaultValue = "${project.basedir}/assets" )
+    private File assetsDirectoryPre4;
+
+    /**
+     * Pre AMP-4 native libraries folder.
+     */
+    @Parameter( readonly = true, defaultValue = "${project.basedir}/libs" )
+    private File nativeLibrariesDirectoryPre4;
+
+    /**
+     * If any non-standard files/folders exist and have NOT been explicitly configured then fail the build.
+     */
+    @Parameter( defaultValue = "true" )
+    private boolean failOnNonStandardStructure;
 
     /**
      * Which dependency scopes should not be included when unpacking dependencies
@@ -226,27 +264,34 @@ public class GenerateSourcesMojo extends AbstractAndroidMojo
             Artifact.SCOPE_SYSTEM, Artifact.SCOPE_IMPORT
     );
 
-
     /**
-     * Generates the source.
+     * Generates the sources.
      *
      * @throws MojoExecutionException if it fails.
      * @throws MojoFailureException if it fails.
      */
     public void execute() throws MojoExecutionException, MojoFailureException
     {
-
         // If the current POM isn't an Android-related POM, then don't do
-        // anything.  This helps work with multi-module projects.
+        // anything. This helps work with multi-module projects.
         if ( ! isCurrentProjectAndroid() )
         {
             return;
         }
 
+        validateStandardLocations();
+
         try
         {
             targetDirectory.mkdirs();
             copyManifest();
+
+            // Check for a deprecated AAR > APKLIB artifact combination
+            if ( warnOnApklibDependencies )
+            {
+                checkForApklibDependencies();
+            }
+
             // TODO Do we really want to continue supporting APKSOURCES? How long has it been deprecated
             extractSourceDependencies();
 
@@ -301,6 +346,59 @@ public class GenerateSourcesMojo extends AbstractAndroidMojo
         {
             getLog().error( "Error when generating sources.", e );
             throw e;
+        }
+    }
+
+    /**
+     * Performs some level of validation on the configured files and folders in light of the change
+     * to AndroidStudio/Gradle style folder structures instead of the original Ant/Eclipse structures.
+     *
+     * Essentially we will be noisy if we see an artifact that looks like before 
+     * Android Maven Plugin 4 and is not explicitly configured.
+     */
+    private void validateStandardLocations() throws MojoExecutionException
+    {
+        boolean hasNonStandardStructure = false;
+        if ( androidManifestFilePre4.exists() && !androidManifestFilePre4.equals( androidManifestFile ) )
+        {
+            getLog().warn( "Non-standard location of AndroidManifest.xml file found, but not configured:\n " 
+                + androidManifestFilePre4 + "\nMove to the standard location src/main/AndroidManifest.xml\n"
+                + "Or configure androidManifesteFile. \n" );
+            hasNonStandardStructure = true;
+        }
+        if ( resourceDirectoryPre4.exists() && !resourceDirectoryPre4.equals( resourceDirectory ) )
+        {
+            getLog().warn( "Non-standard location of Android res folder found, but not configured:\n " 
+                + resourceDirectoryPre4 + "\nMove to the standard location src/main/res/\n"
+                + "Or configure resourceDirectory. \n" );
+            hasNonStandardStructure = true;
+        }
+        if ( assetsDirectoryPre4.exists() && !assetsDirectoryPre4.equals( assetsDirectory ) )
+        {
+            getLog().warn( "Non-standard location assets folder found, but not configured:\n " 
+                + assetsDirectoryPre4 + "\nMove to the standard location src/main/assets/\n"
+                + "Or configure assetsDirectory. \n" );
+            hasNonStandardStructure = true;
+        }
+        if ( nativeLibrariesDirectoryPre4.exists() && !nativeLibrariesDirectoryPre4.equals( nativeLibrariesDirectory ) )
+        {
+            getLog().warn( "Non-standard location native libs folder found, but not configured:\n " 
+                + nativeLibrariesDirectoryPre4 + "\nMove to the standard location src/main/libs/\n"
+                + "Or configure nativeLibrariesDirectory. \n" );
+            hasNonStandardStructure = true;
+        }
+
+        if ( hasNonStandardStructure && failOnNonStandardStructure )
+        {
+            throw new MojoExecutionException(
+                "\n\nFound files or folders in non-standard locations in the project!\n"
+                + "....This might be a side-effect of a migration to Android Maven Plugin 4+.\n"
+                + "....Please observe the warnings for specific files and folders above.\n"
+                + "....Ideally you should restructure your project.\n"
+                + "....Alternatively add explicit configuration overrides for files or folders.\n"
+                + "....Finally you could set failOnNonStandardStructure to false, potentially "
+                + "resulting in other failures.\n\n\n"
+            );
         }
     }
 
@@ -386,6 +484,10 @@ public class GenerateSourcesMojo extends AbstractAndroidMojo
         }
     }
 
+    /**
+     * @deprecated Support <code>APKSOURCES</code> artifacts has been deprecated. Use APKLIB instead.
+     */
+    @Deprecated
     private void extractApksources( File apksourcesFile ) throws MojoExecutionException
     {
         if ( apksourcesFile.isDirectory() )
@@ -489,13 +591,9 @@ public class GenerateSourcesMojo extends AbstractAndroidMojo
         // So we need to extract them into a folder that we then add to the resource classpath.
         if ( isAPKBuild() )
         {
-            // Extract the resources from the AAR classes and add them as a resource path to the project.
-            final File aarClassesJar = getUnpackedAarClassesJar( aarArtifact );
-            final ZipExtractor extractor = new ZipExtractor( getLog() );
-            final File javaResourcesFolder = getUnpackedAarJavaResourcesFolder( aarArtifact );
-            extractor.extract( aarClassesJar, javaResourcesFolder, ".class" );
-            projectHelper.addResource( project, javaResourcesFolder.getAbsolutePath(), null, null );
-            getLog().debug( "Added AAR resources to resource classpath : " + javaResourcesFolder );
+            // (If we are including SYSTEM_SCOPE artifacts when considering resources for APK packaging)
+            // then adding the AAR resources to the project would have them added twice.
+            getLog().debug( "Not adding AAR resources to resource classpath : " + aarArtifact );
         }
     }
 
@@ -522,6 +620,57 @@ public class GenerateSourcesMojo extends AbstractAndroidMojo
         }
         getLog().debug( "Copied APK classes jar into compile classpath : " + unpackedClassesJar );
 
+    }
+
+    /**
+     * Traverses the list of project dependencies looking for &quot;AAR depends on APKLIB&quot; artifact combination
+     * that has been deprecated. For each occurrence of an AAR artifact with APKLIB direct or transitive dependency,
+     * produces a warning message to inform the user. Future plugin versions may default to skipping or not handling
+     * unsupported artifacts during build lifecycle.
+     *
+     * @throws MojoExecutionException
+     */
+    private void checkForApklibDependencies() throws MojoExecutionException
+    {
+        final boolean isAarBuild = project.getPackaging().equals( AAR );
+
+        final DependencyResolver dependencyResolver = getDependencyResolver();
+
+        final Set<Artifact> allArtifacts = project.getArtifacts();
+        Set<Artifact> dependencyArtifacts = getArtifactResolverHelper().getFilteredArtifacts( allArtifacts );
+
+        boolean foundApklib = false;
+
+        for ( Artifact artifact : dependencyArtifacts )
+        {
+            final String type = artifact.getType();
+            if ( type.equals( APKLIB ) && isAarBuild )
+            {
+                getLog().warn( "Detected APKLIB transitive dependency: " + artifact.getId() );
+                foundApklib = true;
+            }
+            else if ( type.equals( AAR ) )
+            {
+                final Set<Artifact> dependencies = dependencyResolver
+                        .getLibraryDependenciesFor( session, repositorySystem, artifact );
+                for ( Artifact dependency : dependencies )
+                {
+                    if ( dependency.getType().equals( APKLIB ) )
+                    {
+                        getLog().warn( "Detected " + artifact.getId() + " that depends on APKLIB: "
+                                + dependency.getId() );
+                        foundApklib = true;
+                    }
+                }
+            }
+        }
+
+        if ( foundApklib )
+        {
+            getLog().warn( "AAR libraries should not depend or include APKLIB artifacts.\n"
+                + "APKLIBs have been deprecated and the combination of the two may yield unexpected results.\n"
+                + "Check the problematic AAR libraries for newer versions that use AAR packaging." );
+        }
     }
 
     /**
@@ -805,17 +954,14 @@ public class GenerateSourcesMojo extends AbstractAndroidMojo
     private List<File> getLibraryResourceFolders()
     {
         final List<File> resourceFolders = new ArrayList<File>();
-        for ( Artifact artifact : getTransitiveDependencyArtifacts() )
+        for ( Artifact artifact : getTransitiveDependencyArtifacts( AAR, APKLIB ) )
         {
             getLog().debug( "Considering dep artifact : " + artifact );
-            if ( artifact.getType().equals( APKLIB ) || artifact.getType().equals( AAR ) )
+            final File resourceFolder = getUnpackedLibResourceFolder( artifact );
+            if ( resourceFolder.exists() )
             {
-                final File resourceFolder = getUnpackedLibResourceFolder( artifact );
-                if ( resourceFolder.exists() )
-                {
-                    getLog().debug( "Adding apklib or aar resource folder : " + resourceFolder );
-                    resourceFolders.add( resourceFolder );
-                }
+                getLog().debug( "Adding apklib or aar resource folder : " + resourceFolder );
+                resourceFolders.add( resourceFolder );
             }
         }
         return resourceFolders;
@@ -837,7 +983,7 @@ public class GenerateSourcesMojo extends AbstractAndroidMojo
 
         List<File> dependenciesResDirectories = new ArrayList<File>();
         final Set<Artifact> apklibDeps = getDependencyResolver()
-                .getLibraryDependenciesFor( mavenSession, repositorySystem, apklibArtifact );
+                .getLibraryDependenciesFor( this.session, this.repositorySystem, apklibArtifact );
         getLog().debug( "apklib=" + apklibArtifact + "  dependencies=" + apklibDeps );
         for ( Artifact dependency : apklibDeps )
         {
@@ -967,8 +1113,8 @@ public class GenerateSourcesMojo extends AbstractAndroidMojo
         }
         generateBuildConfigForPackage( packageName );
 
-        // Skip BuildConfig generation for dependencies if this is not an APK project
-        if ( !project.getPackaging().equals( APK ) )
+        // Skip BuildConfig generation for dependencies if this is an AAR project
+        if ( project.getPackaging().equals( AAR ) )
         {
             return;
         }

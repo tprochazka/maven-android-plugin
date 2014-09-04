@@ -37,8 +37,9 @@ import org.codehaus.plexus.archiver.jar.JarArchiver;
 import org.codehaus.plexus.archiver.util.DefaultFileSet;
 
 import java.io.File;
-import java.io.FilenameFilter;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -50,7 +51,7 @@ import static com.jayway.maven.plugins.android.common.AndroidExtension.APKLIB;
 
 /**
  * Converts compiled Java classes to the Android dex format.
- * 
+ *
  * @author hugo.josefson@jayway.com
  */
 @Mojo(
@@ -61,9 +62,11 @@ import static com.jayway.maven.plugins.android.common.AndroidExtension.APKLIB;
 public class DexMojo extends AbstractAndroidMojo
 {
 
+    private static final String DEX = ".dex";
+    private static final String CLASSES = "classes";
     /**
      * Configuration for the dex command execution. It can be configured in the plugin configuration like so
-     * 
+     *
      * <pre>
      * &lt;dex&gt;
      *   &lt;jvmArguments&gt;
@@ -117,7 +120,7 @@ public class DexMojo extends AbstractAndroidMojo
      */
     @Parameter( property = "android.dex.predex", defaultValue = "false" )
     private boolean dexPreDex;
-    
+
     /**
      * Decides whether to use force jumbo mode.
      */
@@ -190,7 +193,7 @@ public class DexMojo extends AbstractAndroidMojo
         File outputFile;
         if ( parsedMultiDex )
         {
-            outputFile = new File( project.getBuild().getDirectory(), "classes.zip" );
+            outputFile = new File( project.getBuild().getDirectory() );
         }
         else
         {
@@ -199,6 +202,24 @@ public class DexMojo extends AbstractAndroidMojo
         if ( generateApk )
         {
             runDex( executor, outputFile );
+
+            if ( parsedMultiDex )
+            {
+
+                File assets = new File( project.getBuild().getDirectory(),
+                        "generated-sources" + File.separator + "combined-assets" );
+
+                if ( !assets.exists() && !assets.mkdirs() )
+                {
+                    throw new IllegalStateException( "Unable to create combined-assets directory" );
+                }
+                int i = 2;
+                while ( copyAdditionalDex( outputFile, i, assets ) )
+                {
+                   i++;
+                }
+
+            }
         }
 
         if ( attachJar )
@@ -216,9 +237,31 @@ public class DexMojo extends AbstractAndroidMojo
         }
     }
 
+    private boolean copyAdditionalDex( File outputFile, int dexIndex, File assets ) throws MojoExecutionException
+    {
+        File secondDexFile = new File( outputFile, CLASSES + dexIndex + DEX );
+        if ( secondDexFile.exists() )
+        {
+            File copiedSecondDexFile = new File( assets, CLASSES + dexIndex + DEX );
+
+            try
+            {
+                Files.move( secondDexFile.toPath(), copiedSecondDexFile.toPath(), StandardCopyOption.REPLACE_EXISTING );
+
+            }
+            catch ( IOException e )
+            {
+                throw new MojoExecutionException( "IOException while moving classes" + dexIndex + ".dex to "
+                        + "combined-assets directory", e );
+            }
+            return true;
+        }
+        return false;
+    }
+
     /**
      * Gets the input files for dex. This is a combination of directories and jar files.
-     * 
+     *
      * @return
      */
     private Set< File > getDexInputFiles() throws MojoExecutionException
@@ -243,38 +286,16 @@ public class DexMojo extends AbstractAndroidMojo
                         || artifact.getType().equals( Const.ArtifactType.NATIVE_IMPLEMENTATION_ARCHIVE ) )
                 {
                     // Ignore native dependencies - no need for dexer to see those
-                    continue;
                 }
                 else if ( artifact.getType().equals( APKLIB ) )
                 {
-                    // jar files under 'libs' in an APKLIB to dex.
-                    final File unpackLibFolder = getUnpackedLibHelper().getUnpackedLibFolder( artifact );
-                    getLog().debug( "Unpacked Lib folder: " + unpackLibFolder );
-                    final File unpackLibLibsFolder = new File( unpackLibFolder, "libs" );
-                    File[] libJarFiles = unpackLibLibsFolder.listFiles( new FilenameFilter()
-                    {
-                        public boolean accept( final File dir, final String name )
-                        {
-                            return name.endsWith( ".jar" );
-                        }
-                    } );
-
-                    if ( libJarFiles != null )
-                    {
-                        for ( File jarFile : libJarFiles )
-                        {
-                            getLog().debug( "Adding dex inputs:" + jarFile );
-                            inputs.add( jarFile.getAbsoluteFile() );
-                        }
-                    }
-                    continue;
+                    // Any jars in the libs folder should now be
+                    // automatically included because they will be a transitive dependency.
                 }
                 else if ( artifact.getType().equals( AAR ) )
                 {
-                    // We need to get the aar classes, not the aar itself.
-                    final File jar = getUnpackedAarClassesJar( artifact );
-                    getLog().debug( "Adding dex input : " + jar );
-                    inputs.add( jar.getAbsoluteFile() );
+                    // The Aar classes.jar should now be automatically included
+                    // because it will be a transitive dependency. As should any jars in the libs folder.
                 }
                 else if ( artifact.getType().equals( APK ) )
                 {
@@ -559,7 +580,7 @@ public class DexMojo extends AbstractAndroidMojo
 
     /**
      * Figure out the full path to the current java executable.
-     * 
+     *
      * @return the full path to the current java executable.
      */
     private static File getJavaExecutable()
@@ -605,7 +626,7 @@ public class DexMojo extends AbstractAndroidMojo
 
     /**
      * Makes sure the string ends with "/"
-     * 
+     *
      * @param prefix
      *            any string, or null.
      * @return the prefix with a "/" at the end, never null.
@@ -622,7 +643,7 @@ public class DexMojo extends AbstractAndroidMojo
 
     /**
      * Adds a directory to a {@link JarArchiver} with a directory prefix.
-     * 
+     *
      * @param jarArchiver
      * @param directory
      *            The directory to add.
@@ -654,7 +675,7 @@ public class DexMojo extends AbstractAndroidMojo
 
     /**
      * Adds a Java Resources directory (typically "src/main/resources") to a {@link JarArchiver}.
-     * 
+     *
      * @param jarArchiver
      * @param javaResource
      *            The Java resource to add.

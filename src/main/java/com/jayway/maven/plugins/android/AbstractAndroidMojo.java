@@ -154,7 +154,7 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
     /**
      * The android resources directory.
      */
-    @Parameter( defaultValue = "${project.basedir}/res", alias = "resourceDirectoryAlias" )
+    @Parameter( defaultValue = "${project.basedir}/src/main/res", alias = "resourceDirectoryAlias" )
     protected File resourceDirectory;
 
     /**
@@ -166,7 +166,7 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
     /**
      * <p>Root folder containing native libraries to include in the application package.</p>
      */
-    @Parameter( property = "android.nativeLibrariesDirectory", defaultValue = "${project.basedir}/libs" )
+    @Parameter( property = "android.nativeLibrariesDirectory", defaultValue = "${project.basedir}/src/main/libs" )
     protected File nativeLibrariesDirectory;
 
     /**
@@ -193,7 +193,7 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
     /**
      * The android assets directory.
      */
-    @Parameter( defaultValue = "${project.basedir}/assets", alias = "assetsDirectoryAlias" )
+    @Parameter( defaultValue = "${project.basedir}/src/main/assets", alias = "assetsDirectoryAlias" )
     protected File assetsDirectory;
 
     /**
@@ -202,13 +202,12 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
     @Parameter( property = "source.manifestFile" )
     protected File sourceManifestFile;
 
-    
     /**
      * The <code>AndroidManifest.xml</code> file.
      */
     @Parameter(
             property = "android.manifestFile",
-            defaultValue = "${project.basedir}/AndroidManifest.xml",
+            defaultValue = "${project.basedir}/src/main/AndroidManifest.xml",
             alias = "androidManifestFileAlias"
     )
     protected File androidManifestFile;
@@ -417,7 +416,7 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
      * </p>
      * <p/>
      * <p>It is useful to keep this set to <code>true</code> at all times, because if an apk with the same package was
-     * previously signed with a different keystore, and deployed to the device, deployment will fail becuase your
+     * previously signed with a different keystore, and deployed to the device, deployment will fail because your
      * keystore is different.</p>
      */
     @Parameter( property = "android.undeployBeforeDeploy", defaultValue = "false" )
@@ -466,18 +465,32 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
     private NativeHelper nativeHelper;
 
     /**
+     * <p>Include jars stored in the libs folder of an apklib as dependencies.</p>
+     */
+    @Parameter( property = "android.includeLibsJarsForApklib", defaultValue = "false" )
+    protected boolean includeLibsJarsForApklib;
+
+    /**
+     * <p>Include jars stored in the libs folder of an aar as dependencies.</p>
+     */
+    @Parameter( property = "android.includeLibsJarsForAar", defaultValue = "false" )
+    protected boolean includeLibsJarsForAar;
+
+    /**
      *
      */
     private static final Object ADB_LOCK = new Object();
+
     /**
      *
      */
     private static boolean adbInitialized = false;
 
-    @SuppressWarnings( "unused" )
-    @Component
+    /**
+     * Dependency graph builder component.
+     */
+    @Component( hint = "default" )
     protected DependencyGraphBuilder dependencyGraphBuilder;
-
 
     protected final DependencyResolver getDependencyResolver()
     {
@@ -505,12 +518,12 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
     }
 
     /**
-     * Provides transitive dependency artifacts only defined types based on {@code types} argument
+     * Provides transitive dependency artifacts having types defined by {@code types} argument
      * or all types if {@code types} argument is empty
      *
      * @param types artifact types to be selected
-     * @return a {@code List} of all project dependencies. Never {@code null}. This excludes artifacts of the {@code
-     *         EXCLUDED_DEPENDENCY_SCOPES} scopes. And
+     * @return a {@code List} of all project dependencies. Never {@code null}.
+     *         This excludes artifacts of the {@link ArtifactResolverHelper.EXCLUDE_NON_PACKAGED_SCOPES} scopes.
      *         This should maintain dependency order to comply with library project resource precedence.
      */
     protected Set<Artifact> getTransitiveDependencyArtifacts( String... types )
@@ -522,7 +535,8 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
      * Provides transitive dependency artifacts only defined types based on {@code types} argument
      * or all types if {@code types} argument is empty
      *
-     * @param types artifact types to be selected
+     * @param filteredScopes    List of scopes to be removed (ie filtered out).
+     * @param types             Zero or more artifact types to be selected.
      * @return a {@code List} of all project dependencies. Never {@code null}.
      *         This should maintain dependency order to comply with library project resource precedence.
      */
@@ -675,11 +689,6 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
                 {
                     getLog().debug( "Detected apk dependency " + artifact + ". Will resolve and deploy to device..." );
                     final File targetApkFile = resolveArtifactToFile( artifact );
-                    if ( undeployBeforeDeploy )
-                    {
-                        getLog().debug( "Attempting undeploy of " + targetApkFile + " from device..." );
-                        undeployApk( targetApkFile );
-                    }
                     getLog().debug( "Deploying " + targetApkFile + " to device..." );
                     deployApk( targetApkFile );
                 }
@@ -1140,11 +1149,6 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
     protected final File getUnpackedAarClassesJar( Artifact artifact )
     {
         return getUnpackedLibHelper().getUnpackedClassesJar( artifact );
-    }
-
-    protected final File getUnpackedAarJavaResourcesFolder( Artifact artifact )
-    {
-        return new File( getUnpackedLibFolder( artifact ), "java-resources" );
     }
 
     protected final File getUnpackedApkLibSourceFolder( Artifact artifact )
