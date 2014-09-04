@@ -28,7 +28,7 @@
 
     <groupId>com.jayway.maven.plugins.android.generation2</groupId>
     <artifactId>android-maven-plugin</artifactId>
-    <version>4.0.0-af-SNAPSHOT</version>
+    <version>3.9.0-af</version>
     <packaging>maven-plugin</packaging>
 
     <name>Android Maven Plugin - android-maven-plugin</name>
