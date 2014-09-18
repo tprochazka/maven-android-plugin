@@ -154,8 +154,24 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
     /**
      * The android resources directory.
      */
-    @Parameter( defaultValue = "${project.basedir}/src/main/res", alias = "resourceDirectoryAlias" )
+    @Parameter( defaultValue = "${project.basedir}/src/main/res" )
     protected File resourceDirectory;
+
+    @Parameter( defaultValue = "${project.basedir}/src/main/res" )
+    protected File resourceDirectoryAlias;
+
+    /**
+     * The alias for <code>resourceDirectory</code> parameter.
+     * It is should be used to avoid IDEA IDE to relocate <code>res</code> folder location.
+     * If you need it only for maven use.
+     *
+     * @parameter alias="resourceDirectoryAlias" default-value="${project.basedir}/res"
+     */
+    public void setResourceDirectoryAlias( File file )
+    {
+        resourceDirectory = file;
+        resourceDirectoryAlias = file;
+    }
 
     /**
      * Override default generated folder containing R.java
@@ -193,8 +209,24 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
     /**
      * The android assets directory.
      */
-    @Parameter( defaultValue = "${project.basedir}/src/main/assets", alias = "assetsDirectoryAlias" )
+    @Parameter( defaultValue = "${project.basedir}/src/main/assets" )
     protected File assetsDirectory;
+
+    @Parameter( defaultValue = "${project.basedir}/src/main/assets" )
+    protected File assetsDirectoryAlias;
+
+    /**
+     * The alias for <code>resourceDirectory</code> parameter.
+     * It is should be used to avoid IDEA IDE to relocate <code>res</code> folder location.
+     * If you need it only for maven use.
+     *
+     * @parameter alias="assetsDirectoryAlias" default-value="${project.basedir}/assets"
+     */
+    public void setAssetsDirectoryAlias( File file )
+    {
+        assetsDirectory = file;
+        assetsDirectoryAlias = file;
+    }
 
     /**
      * Source <code>AndroidManifest.xml</code> file to copy into the {@link #androidManifestFile} location.
@@ -205,12 +237,22 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
     /**
      * The <code>AndroidManifest.xml</code> file.
      */
-    @Parameter(
-            property = "android.manifestFile",
-            defaultValue = "${project.basedir}/src/main/AndroidManifest.xml",
-            alias = "androidManifestFileAlias"
-    )
+    @Parameter( property = "android.manifestFile", defaultValue = "${project.basedir}/src/main/AndroidManifest.xml" )
     protected File androidManifestFile;
+
+    @Parameter( property = "android.manifestFile", defaultValue = "${project.basedir}/src/main/AndroidManifest.xml" )
+    protected File androidManifestFileAlias;
+
+    /**
+     * The alias for <code>AndroidManifest</code> parameter.
+     * It is should be used to avoid IDEA IDE to relocate <code>AndroidManifest.xml</code> file location.
+     * If you need it only for maven use.
+     */
+    public void setAndroidManifestFileAlias( File file )
+    {
+        androidManifestFile = file;
+        androidManifestFileAlias = file;
+    }
 
     /**
      * <p>A possibly new package name for the application. This value will be passed on to the aapt
@@ -268,10 +310,10 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
      */
     @Parameter( property = "android.devices" )
     protected String[] devices;
-    
+
     /**
      * <p>Specifies the number of threads to use for deploying and testing on attached devices.
-     * 
+     *
      * <p>This parameter can also be configured from command-line with
      * parameter <code>-Dandroid.deviceThreads=2</code>.</p>
      */
@@ -318,7 +360,7 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
 
     /**
      * Automatically create a ProGuard configuration file that will guard Activity classes and the like that are
-     * defined in the AndroidManifest.xml. This files is then automatically used in the proguard mojo execution, 
+     * defined in the AndroidManifest.xml. This files is then automatically used in the proguard mojo execution,
      * if enabled.
      */
     @Parameter( property = "android.proguardFile" )
@@ -363,7 +405,7 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
      * <code>platforms/android-*</code> directories in the Android SDK directory. Default is the latest available
      * version, so you only need to set it if you for example want to use platform 1.5 but also have e.g. 2.2 installed.
      * Has no effect when used on an Android SDK 1.1. The parameter can also be coded as the API level. Therefore valid
-     * values are 1.1, 1.5, 1.6, 2.0, 2.01, 2.1, 2.2 and so as well as 3, 4, 5, 6, 7, 8... 19. If a platform/api level 
+     * values are 1.1, 1.5, 1.6, 2.0, 2.01, 2.1, 2.2 and so as well as 3, 4, 5, 6, 7, 8... 19. If a platform/api level
      * is not installed on the machine an error message will be produced. </p>
      * <p>The <code>&lt;path&gt;</code> parameter is optional. The default is the setting of the ANDROID_HOME
      * environment variable. The parameter can be used to override this setting with a different environment variable
@@ -448,7 +490,7 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
     private File ndkPath;
 
     /**
-     * Whether to create a release build (default is false / debug build). This affect BuildConfig generation 
+     * Whether to create a release build (default is false / debug build). This affect BuildConfig generation
      * and apk generation at this stage, but should probably affect other aspects of the build.
      */
     @Parameter( property = "android.release", defaultValue = "false" )
@@ -660,7 +702,7 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
                                 + "Install of " + apkFile.getAbsolutePath()
                                 + " failed - [" + result + "]" );
                     }
-                    getLog().info( deviceLogLinePrefix + "Successfully installed " + apkFile.getAbsolutePath() ); 
+                    getLog().info( deviceLogLinePrefix + "Successfully installed " + apkFile.getAbsolutePath() );
                     getLog().debug( " to " + DeviceHelper.getDescriptiveName( device ) );
                 }
                 catch ( InstallException e )
@@ -697,9 +739,9 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
     }
 
     /**
-     * Deploy the apk built with the current projects to all attached devices and emulators. 
+     * Deploy the apk built with the current projects to all attached devices and emulators.
      * Skips other projects in a multi-module build without terminating.
-     * 
+     *
      * @throws MojoExecutionException
      * @throws MojoFailureException
      */
@@ -710,7 +752,7 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
             File apkFile = new File( project.getBuild().getDirectory(), project.getBuild().getFinalName() + "." + APK );
             deployApk( apkFile );
         }
-        else 
+        else
         {
             getLog().info( "Project packaging is not apk, skipping deployment." );
         }
@@ -1264,7 +1306,7 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
 
         return list;
     }
-    
+
     private int getDeviceThreads()
     {
         return deviceThreads;
@@ -1348,9 +1390,9 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
         if ( unpackedLibHelper == null )
         {
             unpackedLibHelper = new UnpackedLibHelper(
-                getArtifactResolverHelper(),
-                project,
-                new MavenToPlexusLogAdapter( getLog() )
+                    getArtifactResolverHelper(),
+                    project,
+                    new MavenToPlexusLogAdapter( getLog() )
             );
         }
         return unpackedLibHelper;
