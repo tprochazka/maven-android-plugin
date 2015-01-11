@@ -113,7 +113,7 @@ public class AarMojo extends AbstractAndroidMojo
      */
     public void execute() throws MojoExecutionException, MojoFailureException
     {
-        String out = project.getBuild().getDirectory();
+        String out = targetDirectory.getPath();
         for ( String src : project.getCompileSourceRoots() )
         {
             if ( !src.startsWith( out ) )
@@ -147,13 +147,13 @@ public class AarMojo extends AbstractAndroidMojo
      */
     protected File createAarClassesJar() throws MojoExecutionException
     {
-        final File classesJar = new File( project.getBuild().getDirectory(),
-                project.getBuild().getFinalName() + ".aar.classes.jar" );
+        final File classesJar = new File( targetDirectory,
+                finalName + ".aar.classes.jar" );
         try
         {
             JarArchiver jarArchiver = new JarArchiver();
             jarArchiver.setDestFile( classesJar );
-            jarArchiver.addDirectory( new File( project.getBuild().getOutputDirectory() ),
+            jarArchiver.addDirectory( projectOutputDirectory,
                     classesJarIncludes,
                     classesJarExcludes );
             jarArchiver.createArchive();
@@ -175,8 +175,8 @@ public class AarMojo extends AbstractAndroidMojo
      */
     protected File createAarLibraryFile( File classesJar ) throws MojoExecutionException
     {
-        final File aarLibrary = new File( project.getBuild().getDirectory(),
-                project.getBuild().getFinalName() + "." + AAR );
+        final File aarLibrary = new File( targetDirectory,
+                finalName + "." + AAR );
         FileUtils.deleteQuietly( aarLibrary );
 
         try
@@ -184,7 +184,7 @@ public class AarMojo extends AbstractAndroidMojo
             final ZipArchiver zipArchiver = new ZipArchiver();
             zipArchiver.setDestFile( aarLibrary );
 
-            zipArchiver.addFile( androidManifestFile, "AndroidManifest.xml" );
+            zipArchiver.addFile( destinationManifestFile, "AndroidManifest.xml" );
             addDirectory( zipArchiver, assetsDirectory, "assets" );
             addDirectory( zipArchiver, resourceDirectory, "res" );
             zipArchiver.addFile( classesJar, SdkConstants.FN_CLASSES_JAR );
@@ -219,7 +219,7 @@ public class AarMojo extends AbstractAndroidMojo
 
     private void addR( ZipArchiver zipArchiver ) throws MojoExecutionException
     {
-        final File rFile = new File( project.getBuild().getDirectory() + "/R.txt" );
+        final File rFile = new File( targetDirectory + "/R.txt" );
         if ( rFile.exists() )
         {
             zipArchiver.addFile( rFile, "R.txt" );
@@ -369,13 +369,13 @@ public class AarMojo extends AbstractAndroidMojo
         final CommandExecutor executor = CommandExecutor.Factory.createDefaultCommmandExecutor();
         executor.setLogger( this.getLog() );
 
-        File outputFile = new File( project.getBuild().getDirectory(), project.getBuild().getFinalName() + ".ap_" );
+        File outputFile = new File( targetDirectory, finalName + ".ap_" );
 
         final AaptCommandBuilder commandBuilder = AaptCommandBuilder
                 .packageResources( getLog() )
                 .makePackageDirectories()
                 .forceOverwriteExistingFiles()
-                .setPathToAndroidManifest( androidManifestFile )
+                .setPathToAndroidManifest( destinationManifestFile )
                 .addResourceDirectoriesIfExists( getResourceOverlayDirectories() )
                 .addResourceDirectoryIfExists( resourceDirectory )
                 .addResourceDirectoriesIfExists( dependenciesResDirectories )
@@ -386,7 +386,7 @@ public class AarMojo extends AbstractAndroidMojo
                 .addConfigurations( configurations )
                 .setResourceConstantsFolder( genDirectory )
                 .makeResourcesNonConstant()
-                .generateRTextFile( new File( project.getBuild().getDirectory() ) )
+                .generateRTextFile( targetDirectory )
                 .setVerbose( aaptVerbose );
 
         getLog().debug( getAndroidSdk().getAaptPath() + " " + commandBuilder.toString() );

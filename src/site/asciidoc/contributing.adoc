@@ -1,0 +1,35 @@
+= Contributing
+
+We welcome any contribtuion in the forms of feedback on social media, helping out on stackoverflow whatever. This 
+page however focuses on how to contribute either documentation or source code. All of it is contained in the same git 
+repository.
+
+== Prerequisites
+
+You will have to either know git already or learn it. You will love it!
+
+== Contributing Flow
+
+Once to know how to use git you
+
+* fork the repostiory to your own github account
+* create a branch for your specific work (separate issues or changes should be separate branches)
+* verify it all builds and looks right (see the Building documentation for more on that)
+* send a pull request
+* the core committers will review the pull request
+* any suggested changes need to be done on the same branch and pushed to your repo, this will update the pull request
+* ideally two core committers agree and will pull in the change
+* the changelog then gets updated and you are done
+* delete your branch and pull in from upstream master
+* rinse and repeat ... 
+
+== Documentation Contributions
+
+All docs are written in asciidoc and should be located in 'src/site/asciidoc'. The will be published with the Maven site 
+for each release and also available on the github user interface directly. You can even edit them in the github interface.
+
+== Code Contributions
+
+Just have to be fixing an issue or enhancing the plugin somehow. Even a javadoc spelling fix is not too small to submit.
+The only thing you need to check is that you can build the plugin, because we enforce things like codestyle and so on 
+automatically.

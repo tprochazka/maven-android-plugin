@@ -81,8 +81,8 @@ import static com.jayway.maven.plugins.android.common.AndroidExtension.APKLIB;
  *
  * @author hugo.josefson@jayway.com
  */
-@Mojo( name = "apk", 
-       defaultPhase = LifecyclePhase.PACKAGE, 
+@Mojo( name = "apk",
+       defaultPhase = LifecyclePhase.PACKAGE,
        requiresDependencyResolution = ResolutionScope.COMPILE )
 public class ApkMojo extends AbstractAndroidMojo
 {
@@ -146,10 +146,10 @@ public class ApkMojo extends AbstractAndroidMojo
      * The apk file produced by the apk goal. Per default the file is placed into the build directory (target
      * normally) using the build final name and apk as extension.
      */
-    @Parameter( property = "android.outputApk", 
+    @Parameter( property = "android.outputApk",
                 defaultValue = "${project.build.directory}/${project.build.finalName}.apk" )
     private String outputApk;
-    
+
     /**
      * <p>Additional source directories that contain resources to be packaged into the apk.</p>
      * <p>These are not source directories, that contain java classes to be compiled.
@@ -229,14 +229,14 @@ public class ApkMojo extends AbstractAndroidMojo
      * Specify a list of patterns that are matched against the names of jar file
      * dependencies. Matching jar files will not have their resources added to the
      * resulting APK.
-     * 
+     *
      * The patterns are standard Java regexes.
      */
     @Parameter
     private String[] excludeJarResources;
 
     private Pattern[] excludeJarResourcesPatterns;
-    
+
     /**
      * Embedded configuration of this mojo.
      */
@@ -245,6 +245,10 @@ public class ApkMojo extends AbstractAndroidMojo
     private Apk apk;
 
     private static final Pattern PATTERN_JAR_EXT = Pattern.compile( "^.+\\.jar$", Pattern.CASE_INSENSITIVE );
+
+    private static final String DEX_SUFFIX = ".dex";
+
+    private static final String CLASSES = "classes";
 
     /**
      * <p>Default hardware architecture for native library dependencies (with {@code &lt;type>so&lt;/type>})
@@ -274,18 +278,18 @@ public class ApkMojo extends AbstractAndroidMojo
         generateIntermediateApk();
 
         // Compile resource exclusion patterns, if any
-        if ( excludeJarResources != null && excludeJarResources.length > 0 ) 
+        if ( excludeJarResources != null && excludeJarResources.length > 0 )
         {
           getLog().debug( "Compiling " + excludeJarResources.length + " patterns" );
-          
+
           excludeJarResourcesPatterns = new Pattern[excludeJarResources.length];
-          
-          for ( int index = 0; index < excludeJarResources.length; ++index ) 
+
+          for ( int index = 0; index < excludeJarResources.length; ++index )
           {
             excludeJarResourcesPatterns[index] = Pattern.compile( excludeJarResources[index] );
           }
         }
-        
+
         // Initialize apk build configuration
         File outputFile = new File( outputApk );
         final boolean signWithDebugKeyStore = getAndroidSigner().isSignWithDebugKeyStore();
@@ -294,8 +298,8 @@ public class ApkMojo extends AbstractAndroidMojo
         {
             getLog().info( "Creating debug key signed apk file " + outputFile );
             createApkFile( outputFile, true );
-            final File unsignedOutputFile = new File( project.getBuild().getDirectory(),
-                    project.getBuild().getFinalName() + "-unsigned." + APK );
+            final File unsignedOutputFile = new File( targetDirectory,
+                    finalName + "-unsigned." + APK );
             getLog().info( "Creating additional unsigned apk file " + unsignedOutputFile );
             createApkFile( unsignedOutputFile, false );
             projectHelper.attachArtifact( project, unsignedOutputFile,
@@ -321,13 +325,13 @@ public class ApkMojo extends AbstractAndroidMojo
     void createApkFile( File outputFile, boolean signWithDebugKeyStore ) throws MojoExecutionException
     {
         //this needs to come from DexMojo
-        File dexFile = new File( project.getBuild().getDirectory(), "classes.dex" );
+        File dexFile = new File( targetDirectory, "classes.dex" );
         if ( !dexFile.exists() )
         {
-            dexFile = new File( project.getBuild().getDirectory(), "classes.zip" );
+            dexFile = new File( targetDirectory, "classes.zip" );
         }
 
-        File zipArchive = new File( project.getBuild().getDirectory(), project.getBuild().getFinalName() + ".ap_" );
+        File zipArchive = new File( targetDirectory, finalName + ".ap_" );
         ArrayList<File> sourceFolders = new ArrayList<File>();
         if ( sourceDirectories != null )
         {
@@ -423,7 +427,7 @@ public class ApkMojo extends AbstractAndroidMojo
             {
                 ne = new ZipEntry( zn );
             }
-            
+
             zos.putNextEntry( ne );
 
             InputStream is = zin.getInputStream( ze );
@@ -476,7 +480,7 @@ public class ApkMojo extends AbstractAndroidMojo
                                       boolean signWithDebugKeyStore ) throws MojoExecutionException
     {
         getLog().debug( "Building APK with internal APKBuilder" );
-        sourceFolders.add( new File( project.getBuild().getOutputDirectory() ) );
+        sourceFolders.add( projectOutputDirectory );
 
         for ( Artifact artifact : getRelevantCompileArtifacts() )
         {
@@ -530,7 +534,7 @@ public class ApkMojo extends AbstractAndroidMojo
                 }
             }
         }
-        
+
         try
         {
             final String debugKeyStore = signWithDebugKeyStore ? ApkBuilder.getDebugKeystore() : null;
@@ -545,11 +549,11 @@ public class ApkMojo extends AbstractAndroidMojo
                 getLog().debug( "Adding source folder : " + sourceFolder );
                 apkBuilder.addSourceFolder( sourceFolder );
             }
-     
+
             for ( File jarFile : jarFiles )
             {
                 boolean excluded = false;
-              
+
                 if ( excludeJarResourcesPatterns != null )
                 {
                     final String name = jarFile.getName();
@@ -557,13 +561,13 @@ public class ApkMojo extends AbstractAndroidMojo
                     for ( Pattern pattern : excludeJarResourcesPatterns )
                     {
                         final Matcher matcher = pattern.matcher( name );
-                        if ( matcher.matches() ) 
+                        if ( matcher.matches() )
                         {
                             getLog().debug( "Jar " + name + " excluded by pattern " + pattern );
                             excluded = true;
                             break;
-                        } 
-                        else 
+                        }
+                        else
                         {
                             getLog().debug( "Jar " + name + " not excluded by pattern " + pattern );
                         }
@@ -574,7 +578,7 @@ public class ApkMojo extends AbstractAndroidMojo
                 {
                     continue;
                 }
-                
+
                 if ( jarFile.isDirectory() )
                 {
                     getLog().debug( "Adding resources from jar folder : " + jarFile );
@@ -585,7 +589,7 @@ public class ApkMojo extends AbstractAndroidMojo
                             return PATTERN_JAR_EXT.matcher( name ).matches();
                         }
                     } );
-    
+
                     for ( String filename : filenames )
                     {
                         final File innerJar = new File( jarFile, filename );
@@ -600,32 +604,59 @@ public class ApkMojo extends AbstractAndroidMojo
                 }
             }
 
+            addSecondaryDexes( dexFile, apkBuilder );
+
             for ( File nativeFolder : nativeFolders )
             {
                 getLog().debug( "Adding native library : " + nativeFolder );
                 apkBuilder.addNativeLibraries( nativeFolder );
             }
             apkBuilder.sealApk();
-        } 
+        }
         catch ( ApkCreationException e )
         {
             throw new MojoExecutionException( e.getMessage() );
-        } 
+        }
         catch ( DuplicateFileException e )
         {
             final String msg = String.format( "Duplicated file: %s, found in archive %s and %s",
                     e.getArchivePath(), e.getFile1(), e.getFile2() );
             throw new MojoExecutionException( msg, e );
-        } 
+        }
         catch ( SealedApkException e )
         {
             throw new MojoExecutionException( e.getMessage() );
         }
     }
 
+    private void addSecondaryDexes( File dexFile, ApkBuilder apkBuilder ) throws ApkCreationException,
+            SealedApkException, DuplicateFileException
+    {
+        int dexNumber = 2;
+        String dexFileName = getNextDexFileName( dexNumber );
+        File secondDexFile = createNextDexFile( dexFile, dexFileName );
+        while ( secondDexFile.exists() )
+        {
+            apkBuilder.addFile( secondDexFile, dexFileName );
+            dexNumber++;
+            dexFileName = getNextDexFileName( dexNumber );
+            secondDexFile = createNextDexFile( dexFile, dexFileName );
+        }
+    }
+
+    private File createNextDexFile( File dexFile, String dexFileName )
+    {
+        return new File( dexFile.getParentFile(), dexFileName );
+    }
+
+    private String getNextDexFileName( int dexNumber )
+    {
+        return CLASSES + dexNumber + DEX_SUFFIX;
+    }
+
     private File removeDuplicatesFromJar( File in, List<String> duplicates )
     {
-        String target = project.getBuild().getOutputDirectory();
+        String target = projectOutputDirectory.getAbsolutePath();
         File tmp = new File( target, "unpacked-embedded-jars" );
         tmp.mkdirs();
         File out = new File( tmp, in.getName() );
@@ -883,7 +914,7 @@ public class ApkMojo extends AbstractAndroidMojo
         File[] overlayDirectories = getResourceOverlayDirectories();
 
         File androidJar = getAndroidSdk().getAndroidJar();
-        File outputFile = new File( project.getBuild().getDirectory(), project.getBuild().getFinalName() + ".ap_" );
+        File outputFile = new File( targetDirectory, finalName + ".ap_" );
 
         List<File> dependencyArtifactResDirectoryList = new ArrayList<File>();
         for ( Artifact libraryArtifact : getTransitiveDependencyArtifacts( APKLIB, AAR ) )
@@ -898,7 +929,7 @@ public class ApkMojo extends AbstractAndroidMojo
         AaptCommandBuilder commandBuilder = AaptCommandBuilder
                 .packageResources( getLog() )
                 .forceOverwriteExistingFiles()
-                .setPathToAndroidManifest( androidManifestFile )
+                .setPathToAndroidManifest( destinationManifestFile )
                 .addResourceDirectoriesIfExists( overlayDirectories )
                 .addResourceDirectoryIfExists( resourceDirectory )
                 .addResourceDirectoriesIfExists( dependencyArtifactResDirectoryList )

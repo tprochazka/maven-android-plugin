@@ -32,6 +32,7 @@ import com.jayway.maven.plugins.android.common.UnpackedLibHelper;
 import com.jayway.maven.plugins.android.config.ConfigPojo;
 import com.jayway.maven.plugins.android.configuration.Ndk;
 import com.jayway.maven.plugins.android.configuration.Sdk;
+
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.filefilter.TrueFileFilter;
 import org.apache.commons.jxpath.JXPathContext;
@@ -42,6 +43,7 @@ import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.handler.ArtifactHandler;
 import org.apache.maven.artifact.resolver.ArtifactResolver;
 import org.apache.maven.execution.MavenSession;
+import org.apache.maven.model.Resource;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecution;
 import org.apache.maven.plugin.MojoExecutionException;
@@ -146,10 +148,28 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
     protected File sourceDirectory;
 
     /**
-     * The java target directory. Ie target/classes.
+     * The project build directory. Ie target.
      */
     @Parameter( defaultValue = "${project.build.directory}", readonly = true )
     protected File targetDirectory;
+    
+    /**
+     * The output directory. Ie target/classes.
+     */
+    @Parameter( defaultValue = "${project.build.outputDirectory}", readonly = true )
+    protected File projectOutputDirectory;
+    
+    /**
+     * The project resources. By default a list containing src/main/resources.
+     */
+    @Parameter( defaultValue = "${project.build.resources}", readonly = true )
+    protected List<Resource> resources;
+    
+    /**
+     * The final name of the artifact.
+     */
+    @Parameter( defaultValue = "${project.build.finalName}", readonly = true )
+    protected String finalName;
 
     /**
      * The android resources directory.
@@ -229,12 +249,6 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
     }
 
     /**
-     * Source <code>AndroidManifest.xml</code> file to copy into the {@link #androidManifestFile} location.
-     */
-    @Parameter( property = "source.manifestFile" )
-    protected File sourceManifestFile;
-
-    /**
      * The <code>AndroidManifest.xml</code> file.
      */
     @Parameter( property = "android.manifestFile", defaultValue = "${project.basedir}/src/main/AndroidManifest.xml" )
@@ -254,6 +268,13 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
         androidManifestFileAlias = file;
     }
 
+    /**
+     * Source <code>AndroidManifest.xml</code> file to copy into the {@link #destinationManifestFile} location.
+     */
+    @Parameter( property = "destination.manifestFile", defaultValue = "${project.build.directory}/AndroidManifest.xml" )
+    protected File destinationManifestFile;
+
+    
     /**
      * <p>A possibly new package name for the application. This value will be passed on to the aapt
      * parameter --rename-manifest-package. Look to aapt for more help on this. </p>
@@ -282,6 +303,24 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
      */
     @Parameter( defaultValue = "${project.build.directory}/generated-sources/combined-assets", readonly = true )
     protected File combinedAssets;
+
+    /**
+     * <p>Include jars stored in the libs folder of an apklib as dependencies.
+     * Do not delete or change name as it is used in the LifeCycleParticipant.</p>
+     * 
+     * @see ClasspathModifierLifecycleParticipant
+     */
+    @Parameter( defaultValue = "false" )
+    private boolean includeLibsJarsFromApklib;
+ 
+    /**
+     * <p>Include jars stored in the libs folder of an aar as dependencies.
+     * Do not delete or change name as it is used in the LifeCycleParticipant.</p>
+     * 
+     * @see ClasspathModifierLifecycleParticipant
+     */
+    @Parameter( defaultValue = "false" )
+    private boolean includeLibsJarsFromAar;
 
     /**
      * Specifies which the serial number of the device to connect to. Using the special values "usb" or
@@ -502,21 +541,15 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
     @Parameter( property = "android.adb.connectionTimeout", defaultValue = "5000" )
     protected int adbConnectionTimeout;
 
+    /**
+     * Folder in which AAR library dependencies will be unpacked.
+     */
+    @Parameter( property = "unpackedLibsFolder", defaultValue = "target/unpacked-libs" )
+    private File unpackedLibsFolder;
+
     private UnpackedLibHelper unpackedLibHelper;
     private ArtifactResolverHelper artifactResolverHelper;
     private NativeHelper nativeHelper;
-
-    /**
-     * <p>Include jars stored in the libs folder of an apklib as dependencies.</p>
-     */
-    @Parameter( property = "android.includeLibsJarsForApklib", defaultValue = "false" )
-    protected boolean includeLibsJarsForApklib;
-
-    /**
-     * <p>Include jars stored in the libs folder of an aar as dependencies.</p>
-     */
-    @Parameter( property = "android.includeLibsJarsForAar", defaultValue = "false" )
-    protected boolean includeLibsJarsForAar;
 
     /**
      *
@@ -749,7 +782,7 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
     {
         if ( project.getPackaging().equals( APK ) )
         {
-            File apkFile = new File( project.getBuild().getDirectory(), project.getBuild().getFinalName() + "." + APK );
+            File apkFile = new File( targetDirectory, finalName + "." + APK );
             deployApk( apkFile );
         }
         else
@@ -1044,7 +1077,7 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
      */
     protected final String getAndroidManifestPackageName()
     {
-        return extractPackageNameFromAndroidManifest( androidManifestFile );
+        return extractPackageNameFromAndroidManifest( destinationManifestFile );
     }
 
     /**
@@ -1084,7 +1117,7 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
 
     protected final boolean isInstrumentationTest() throws MojoExecutionException
     {
-        return extractInstrumentationRunnerFromAndroidManifest( androidManifestFile ) != null;
+        return extractInstrumentationRunnerFromAndroidManifest( destinationManifestFile ) != null;
     }
 
     /**
@@ -1390,9 +1423,10 @@ public abstract class AbstractAndroidMojo extends AbstractMojo
         if ( unpackedLibHelper == null )
         {
             unpackedLibHelper = new UnpackedLibHelper(
-                    getArtifactResolverHelper(),
-                    project,
-                    new MavenToPlexusLogAdapter( getLog() )
+                getArtifactResolverHelper(),
+                project,
+                new MavenToPlexusLogAdapter( getLog() ),
+                unpackedLibsFolder
             );
         }
         return unpackedLibHelper;

@@ -398,7 +398,7 @@ public class NdkBuildMojo extends AbstractAndroidMojo
         // Setup the build directory (defaults to the current directory) but may be different depending
         // on user configuration
         commands.add( "-C" );
-        commands.add( ndkBuildDirectory.getAbsolutePath() );
+        commands.add( project.getBasedir().getAbsolutePath() );
 
         // If the build should use a custom makefile or not - some validation is done to ensure
         // this exists and all
@@ -801,8 +801,7 @@ public class NdkBuildMojo extends AbstractAndroidMojo
             MavenArchiver mavenArchiver = new MavenArchiver();
             mavenArchiver.setArchiver( jarArchiver );
 
-            final File jarFile = new File( new File( project.getBuild().getDirectory() ),
-                    project.getBuild().getFinalName() + ".har" );
+            final File jarFile = new File( targetDirectory, finalName + ".har" );
 
             mavenArchiver.setOutputFile( jarFile );
 

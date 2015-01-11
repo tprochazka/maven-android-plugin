@@ -1,0 +1,105 @@
+= Changelog
+
+== 4.1.x or higher - upcoming
+
+Planned changes:
+
+* potentially use Takari lifecycle to improve build speed
+** see https://github.com/simpligility/android-maven-plugin/issues/532
+* migrate more documentation into the github project
+* migrate more tests to be instrumentation tests with example projects
+** see https://github.com/simpligility/android-maven-plugin/issues/452
+* anything else contributed by the community
+
+== 4.1.0 - upcoming
+
+* Updated to Android SDK libraries 1.0.0 / 24.0.0
+** see https://github.com/simpligility/android-maven-plugin/pull/531
+** contributed by Benoit Billington https://github.com/Shusshu
+* Use lint from Android SDK libraries rather than command line invocation
+** see https://github.com/simpligility/android-maven-plugin/pull/528
+** fixes https://github.com/simpligility/android-maven-plugin/issues/400
+** fixes https://github.com/simpligility/android-maven-plugin/issues/357
+** fixes https://github.com/simpligility/android-maven-plugin/issues/476
+** contributed by Benoit Billington https://github.com/Shusshu
+* Making unpacked-libs folder configurable
+** See https://github.com/simpligility/android-maven-plugin/pull/538
+** contributed by William Ferguson https://github.com/william-ferguson-au
+* Added deprecation for APKLIB format
+** see https://github.com/simpligility/android-maven-plugin/pull/543
+* Use the Google Play Developer API to upload APKs and update the store listing
+** see https://github.com/simpligility/android-maven-plugin/pull/534
+** fixes https://github.com/simpligility/android-maven-plugin/issues/418
+** contributed by Joris de Groot https://github.com/jdegroot
+** contributed by Benoit Billington https://github.com/Shusshu
+* Improvements to project site including github ribbon and more
+** see https://github.com/simpligility/android-maven-plugin/pull/544
+** contributed by Manfred Moser http://www.simpligility.com
+* Added Manifest Merger V2 and deprecated Manifest-Update mojo
+** see https://github.com/simpligility/android-maven-plugin/pull/539
+** fixes https://github.com/simpligility/android-maven-plugin/issues/519
+** contributed by Benoit Billington https://github.com/Shusshu
+* Refactor the 3 parameters used for the androidManifest.xml into 2 params 
+** see https://github.com/simpligility/android-maven-plugin/pull/542
+** see https://github.com/simpligility/android-maven-plugin/issues/508
+** contributed by Benoit Billington https://github.com/Shusshu
+* Fixed broken undeploy mojo AndroidManifest parsing
+** see https://github.com/simpligility/android-maven-plugin/issues/550
+** contributed by Manfred Moser http://www.simpligility.com
+* MultiDex improvement - generating mainDexClasses when multiDex flag set to true and mainDexList is null
+** see https://github.com/simpligility/android-maven-plugin/pull/526
+** contributed by Piotr Soróbka https://github.com/psorobka
+* A whole bunch minor project improvements and fixes
+** see commit history
+** contributed by Manfred Moser http://www.simpligility.com
+
+ATTENTION:
+
+* updatedManifestFile & sourceManifestFile parameters have been removed.
+* use androidManifestFile and destinationManifestFile
+** See https://github.com/simpligility/android-maven-plugin/pull/542
+
+== 4.0.0 - released 2014-11-25
+
+* Migrated some documentation from the old Google Code site
+** contributed by Manfred Moser http://www.simpligility.com
+* Fix for aar and jar dependency mix and related resolving
+** see https://github.com/simpligility/android-maven-plugin/pull/493
+** fixes https://github.com/simpligility/android-maven-plugin/issues/485
+** contributed by Hoyt Summers Pittman https://github.com/secondsun
+* Fixes to proguard and multidex related processing
+** see https://github.com/simpligility/android-maven-plugin/pull/509
+** fixes https://github.com/simpligility/android-maven-plugin/issues/507
+** contributed by Łukasz Suski https://github.com/lsuski
+* Documentation for shading commons-codec to allow usage of newer version
+** see https://github.com/simpligility/android-maven-plugin/pull/498
+** see https://github.com/simpligility/android-maven-plugin/issues/487#issuecomment-60956025
+** contributed by Matthias Stevens https://github.com/mstevens83
+* Custom exclude filter to ProGuardMojo
+** see https://github.com/simpligility/android-maven-plugin/pull/497
+** Contributed by Csaba Kozák https://github.com/WonderCsabo
+* Fixes to resource files in sample projects to allow builds to pass with new SDK
+** see https://github.com/simpligility/android-maven-plugin/pull/514
+** contributed by Manfred Moser http://www.simpligility.com
+* Always honor dexArguments parameters
+** fixes https://github.com/simpligility/android-maven-plugin/issues/517
+** contributed by Manfred Moser http://www.simpligility.com
+* Downgraded runtime requirements to Maven 3.0.4
+** contributed by Manfred Moser http://www.simpligility.com
+* Examples documentation
+** contributed by Manfred Moser http://www.simpligility.com
+* Moved Emma analysis to process-classes phase
+** fixes https://github.com/simpligility/android-maven-plugin/issues/489
+** see https://github.com/simpligility/android-maven-plugin/pull/515
+** contributed by Dmitry Berezhnoy https://github.com/deadmoto
+
+== 4.0.0-rc.3 - released 2014-10-28
+
+* Migrated complete project to new git repo at https://github.com/simpligility/android-maven-plugin
+** contributed by Manfred Moser http://www.simpligility.com
+* Adapted codebase to new groupId "com.simpligility.maven.plugins
+** contributed by Manfred Moser http://www.simpligility.com
+
+== 4.0.0-rc.2 and older release notes
+
+can be found on the old project site on the https://code.google.com/p/maven-android-plugin/wiki/Changelog[changelog wiki page]. 

@@ -51,7 +51,9 @@ import static com.jayway.maven.plugins.android.common.AndroidExtension.APKLIB;
  * apklib files do not generate deployable artifacts.
  *
  * @author nmaiorana@gmail.com
+ * @deprecated Use Aar instead see {@link com.jayway.maven.plugins.android.phase09package.AarMojo}
  */
+@Deprecated
 @Mojo( name = "apklib", defaultPhase = LifecyclePhase.PACKAGE, requiresDependencyResolution = ResolutionScope.COMPILE )
 public class ApklibMojo extends AbstractAndroidMojo
 {
@@ -96,7 +98,7 @@ public class ApklibMojo extends AbstractAndroidMojo
      */
     public void execute() throws MojoExecutionException, MojoFailureException
     {
-        String out = project.getBuild().getDirectory();
+        String out = targetDirectory.getPath();
         for ( String src : project.getCompileSourceRoots() )
         {
             if ( !src.startsWith( out ) ) 
@@ -122,16 +124,16 @@ public class ApklibMojo extends AbstractAndroidMojo
 
         if ( attachJar )
         {
-            final File jarFile = new File( project.getBuild().getDirectory(),
-                    project.getBuild().getFinalName() + ".jar" );
+            final File jarFile = new File( targetDirectory,
+                    finalName + ".jar" );
             projectHelper.attachArtifact( project, "jar", project.getArtifact().getClassifier(), jarFile );
         }
     }
 
     private File createApkLibraryFile() throws MojoExecutionException
     {
-        final File apklibrary = new File( project.getBuild().getDirectory(),
-                project.getBuild().getFinalName() + "." + APKLIB );
+        final File apklibrary = new File( targetDirectory,
+                finalName + "." + APKLIB );
         FileUtils.deleteQuietly( apklibrary );
 
         try
@@ -139,7 +141,7 @@ public class ApklibMojo extends AbstractAndroidMojo
             JarArchiver jarArchiver = new JarArchiver();
             jarArchiver.setDestFile( apklibrary );
 
-            jarArchiver.addFile( androidManifestFile, "AndroidManifest.xml" );
+            jarArchiver.addFile( destinationManifestFile, "AndroidManifest.xml" );
             addDirectory( jarArchiver, assetsDirectory, "assets" );
             addDirectory( jarArchiver, resourceDirectory, "res" );
             
@@ -157,7 +159,7 @@ public class ApklibMojo extends AbstractAndroidMojo
                 }
             }
 
-            addJavaResources( jarArchiver, project.getBuild().getResources(), "src" );
+            addJavaResources( jarArchiver, resources, "src" );
 
             // Lastly, add any native libraries
             addNativeLibraries( jarArchiver );
@@ -349,7 +351,7 @@ public class ApklibMojo extends AbstractAndroidMojo
         File[] overlayDirectories = getResourceOverlayDirectories();
 
         File androidJar = getAndroidSdk().getAndroidJar();
-        File outputFile = new File( project.getBuild().getDirectory(), project.getBuild().getFinalName() + ".ap_" );
+        File outputFile = new File( targetDirectory, finalName + ".ap_" );
 
         List<File> dependencyArtifactResDirectoryList = new ArrayList<File>();
         for ( Artifact libraryArtifact : getTransitiveDependencyArtifacts( APKLIB, AAR ) )
@@ -364,7 +366,7 @@ public class ApklibMojo extends AbstractAndroidMojo
         AaptCommandBuilder commandBuilder = AaptCommandBuilder
                 .packageResources( getLog() )
                 .forceOverwriteExistingFiles()
-                .setPathToAndroidManifest( androidManifestFile )
+                .setPathToAndroidManifest( destinationManifestFile )
                 .addResourceDirectoriesIfExists( overlayDirectories )
                 .addResourceDirectoryIfExists( resourceDirectory )
                 .addResourceDirectoriesIfExists( dependencyArtifactResDirectoryList )

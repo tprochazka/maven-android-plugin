@@ -65,6 +65,12 @@ public final class ClasspathModifierLifecycleParticipant extends AbstractMavenLi
     private static final boolean INCLUDE_FROM_APKLIB_DEFAULT = false;
     private static final boolean INCLUDE_FROM_AAR_DEFAULT = false;
 
+    /**
+     * Mojo configuration parameter that defines where AAR files should be unpacked.
+     * Default is /target/unpacked-libs
+     */
+    private static final String UNPACKED_LIBS_FOLDER_PARAM = "unpackedLibsFolder";
+
     @Requirement
     private ArtifactResolver artifactResolver;
 
@@ -98,7 +104,12 @@ public final class ClasspathModifierLifecycleParticipant extends AbstractMavenLi
                 continue; // do not modify classpath if not an android project.
             }
 
-            final UnpackedLibHelper helper = new UnpackedLibHelper( artifactResolverHelper, project, log );
+            final String unpackedLibsFolder = PomConfigurationHelper.getPluginConfigParameter(
+                    project, UNPACKED_LIBS_FOLDER_PARAM, null );
+            log.debug( UNPACKED_LIBS_FOLDER_PARAM + " set to " + unpackedLibsFolder );
+            final UnpackedLibHelper helper = new UnpackedLibHelper( artifactResolverHelper, project, log,
+                    unpackedLibsFolder == null ? null : new File( unpackedLibsFolder )
+            );
 
             final Set<Artifact> artifacts;
 
@@ -255,7 +266,7 @@ public final class ClasspathModifierLifecycleParticipant extends AbstractMavenLi
         }
 
         // Add the classes to the classpath
-        final Dependency dependency = createSystemScopeDependency( artifact, classesJar, null );
+        final Dependency dependency = createSystemScopeDependency( artifact, classesJar, "extracted" );
         project.getModel().addDependency( dependency );
     }
 
@@ -264,7 +275,7 @@ public final class ClasspathModifierLifecycleParticipant extends AbstractMavenLi
         String artifactId = artifact.getArtifactId();
         if ( suffix != null )
         {
-            artifactId = "_" + suffix;
+            artifactId += "_" + suffix;
         }
         final Dependency dependency = new Dependency();
         dependency.setGroupId( artifact.getGroupId() );

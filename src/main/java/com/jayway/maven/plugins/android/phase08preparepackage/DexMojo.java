@@ -60,8 +60,6 @@ import static com.jayway.maven.plugins.android.common.AndroidExtension.APKLIB;
 public class DexMojo extends AbstractAndroidMojo
 {
 
-    private static final String DEX = ".dex";
-    private static final String CLASSES = "classes";
     /**
      * Configuration for the dex command execution. It can be configured in the plugin configuration like so
      *
@@ -198,39 +196,21 @@ public class DexMojo extends AbstractAndroidMojo
         File outputFile;
         if ( parsedMultiDex )
         {
-            outputFile = new File( project.getBuild().getDirectory() );
+            outputFile = targetDirectory;
         }
         else
         {
-            outputFile = new File( project.getBuild().getDirectory(), "classes.dex" );
+            outputFile = new File( targetDirectory, "classes.dex" );
         }
         if ( generateApk )
         {
             runDex( executor, outputFile );
-
-            if ( parsedMultiDex )
-            {
-
-                File assets = new File( project.getBuild().getDirectory(),
-                        "generated-sources" + File.separator + "combined-assets" );
-
-                if ( !assets.exists() && !assets.mkdirs() )
-                {
-                    throw new IllegalStateException( "Unable to create combined-assets directory" );
-                }
-                int i = 2;
-                while ( copyAdditionalDex( outputFile, i, assets ) )
-                {
-                   i++;
-                }
-
-            }
         }
 
         if ( attachJar )
         {
-            File jarFile = new File( project.getBuild().getDirectory() + File.separator
-                    + project.getBuild().getFinalName() + ".jar" );
+            File jarFile = new File( targetDirectory + File.separator
+                    + finalName + ".jar" );
             projectHelper.attachArtifact( project, "jar", project.getArtifact().getClassifier(), jarFile );
         }
 
@@ -240,27 +220,6 @@ public class DexMojo extends AbstractAndroidMojo
             final File apksources = createApkSourcesFile();
             projectHelper.attachArtifact( project, "apksources", apksources );
         }
-    }
-
-    private boolean copyAdditionalDex( File outputFile, int dexIndex, File assets ) throws MojoExecutionException
-    {
-        File secondDexFile = new File( outputFile, CLASSES + dexIndex + DEX );
-        if ( secondDexFile.exists() )
-        {
-            File copiedSecondDexFile = new File( assets, CLASSES + dexIndex + DEX );
-
-            try
-            {
-                FileUtils.moveFile( secondDexFile, copiedSecondDexFile );
-            }
-            catch ( IOException e )
-            {
-                throw new MojoExecutionException( "IOException while moving classes" + dexIndex + ".dex to "
-                        + "combined-assets directory", e );
-            }
-            return true;
-        }
-        return false;
     }
 
     /**
@@ -282,7 +241,7 @@ public class DexMojo extends AbstractAndroidMojo
         {
             getLog().debug( "Using non-obfuscated input" );
             // no proguard, use original config
-            inputs.add( new File( project.getBuild().getOutputDirectory() ) );
+            inputs.add( projectOutputDirectory );
             getLog().debug( "Adding dex input : " + project.getBuild().getOutputDirectory() );
             for ( Artifact artifact : getTransitiveDependencyArtifacts() )
             {
@@ -561,7 +520,9 @@ public class DexMojo extends AbstractAndroidMojo
             commands.add( "--multi-dex" );
             if ( parsedMainDexList == null )
             {
-                throw new MojoExecutionException( "Missing main dex list." );
+                File generatedMainDexClasses = generateMainDexClassesFile();
+                commands.add( "--main-dex-list=" + generatedMainDexClasses );
+                parsedMinimalMainDex = true;
             }
             else
             {
@@ -571,10 +532,10 @@ public class DexMojo extends AbstractAndroidMojo
             {
                 commands.add( "--minimal-main-dex" );
             }
-            if ( parsedDexArguments != null )
-            {
-               commands.add( parsedDexArguments );
-            }
+        }
+        if ( parsedDexArguments != null )
+        {
+           commands.add( parsedDexArguments );
         }
         commands.add( "--output=" + outputFile.getAbsolutePath() );
         for ( File inputFile : filteredFiles )
@@ -608,13 +569,40 @@ public class DexMojo extends AbstractAndroidMojo
         return new File( javaHome + slash + "bin" + slash + "java" );
     }
 
+    private File generateMainDexClassesFile() throws MojoExecutionException 
+    {
+        CommandExecutor executor = CommandExecutor.Factory.createDefaultCommmandExecutor();
+        executor.setLogger( getLog() );
+        List< String> commands = new ArrayList< String>();
+        commands.add( "--output" );
+        
+        File mainDexClasses = new File( targetDirectory, "mainDexClasses.txt" );
+        commands.add( mainDexClasses.getAbsolutePath() );
+        
+        Set< File> inputFiles = getDexInputFiles();  
+        StringBuilder sb = new StringBuilder();
+        sb.append( '"' ).append( StringUtils.join( inputFiles, File.pathSeparatorChar ) ).append( '"' );
+        commands.add( sb.toString() );
+        
+        String executable = getAndroidSdk().getMainDexClasses().getAbsolutePath();
+        try
+        {
+            executor.executeCommand( executable, commands, project.getBasedir(), false );
+        } 
+        catch ( ExecutionException ex ) 
+        {
+            throw new MojoExecutionException( "Failed to execute mainDexClasses", ex );
+        }
+        return mainDexClasses;
+    }    
+    
     /**
      * @return
      * @throws MojoExecutionException
      */
     protected File createApkSourcesFile() throws MojoExecutionException
     {
-        final File apksources = new File( project.getBuild().getDirectory(), project.getBuild().getFinalName()
+        final File apksources = new File( targetDirectory, finalName
                 + ".apksources" );
         FileUtils.deleteQuietly( apksources );
 
@@ -626,7 +614,7 @@ public class DexMojo extends AbstractAndroidMojo
             addDirectory( jarArchiver, assetsDirectory, "assets" );
             addDirectory( jarArchiver, resourceDirectory, "res" );
             addDirectory( jarArchiver, sourceDirectory, "src/main/java" );
-            addJavaResources( jarArchiver, project.getBuild().getResources() );
+            addJavaResources( jarArchiver, resources );
 
             jarArchiver.createArchive();
         }

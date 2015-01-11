@@ -7,4 +7,4 @@ target
 .project
 .classpath
 bin
-/out/
+gen
